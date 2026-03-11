@@ -233,9 +233,9 @@ exports.handler = async function handler() {
   const clientSecret = process.env.STM_CLIENT_SECRET || '';
   const apiKey = process.env.STM_API_KEY || clientId;
 
-  if (!apiKey) {
+  if (!apiKey || !clientSecret) {
     return json(500, {
-      error: 'Missing STM_API_KEY or STM_CLIENT_ID environment variable.'
+      error: 'Missing STM_API_KEY/STM_CLIENT_ID or STM_CLIENT_SECRET environment variable.'
     });
   }
 
@@ -243,9 +243,8 @@ exports.handler = async function handler() {
     const response = await fetch(STM_BASE_URL, {
       headers: {
         Accept: 'application/json',
-        apiKey,
-        ...(clientId ? { 'X-IBM-Client-Id': clientId } : {}),
-        ...(clientSecret ? { 'X-IBM-Client-Secret': clientSecret } : {})
+        'X-IBM-Client-Id': apiKey,
+        'X-IBM-Client-Secret': clientSecret
       }
     });
 
