@@ -1,0 +1,3589 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Montreal Trip Map</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  >
+  <style>
+    :root {
+      --paper: #fffaf1;
+      --paper-strong: rgba(255, 250, 241, 0.96);
+      --paper-soft: rgba(255, 250, 241, 0.78);
+      --ink: #162238;
+      --muted: #536176;
+      --line: rgba(22, 34, 56, 0.1);
+      --shadow: 0 24px 60px rgba(22, 34, 56, 0.18);
+      --hotel: #d1a337;
+      --food: #e66a42;
+      --bars: #0d8b8f;
+      --nightlife: #da3f68;
+      --sightseeing: #4064d8;
+      --action: #162238;
+      --action-text: #fffaf1;
+      --success: #2f9e72;
+      --radius-lg: 28px;
+      --radius-md: 20px;
+      --radius-sm: 14px;
+      --map-tools-top: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top left, rgba(64, 100, 216, 0.16), transparent 38%),
+        radial-gradient(circle at top right, rgba(230, 106, 66, 0.14), transparent 32%),
+        linear-gradient(180deg, #f2ece1 0%, #faf7f0 100%);
+    }
+
+    body {
+      font-family: "Space Grotesk", sans-serif;
+      color: var(--ink);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(22, 34, 56, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(22, 34, 56, 0.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at center, black 45%, transparent 92%);
+    }
+
+    #app,
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+    }
+
+    #map {
+      position: relative;
+      z-index: 1;
+    }
+
+    .leaflet-tile {
+      filter: saturate(1.12) contrast(1.03);
+    }
+
+    .trip-panel {
+      position: absolute;
+      top: max(18px, calc(env(safe-area-inset-top) + 10px));
+      left: max(18px, calc(env(safe-area-inset-left) + 18px));
+      z-index: 800;
+      width: min(390px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, var(--paper-strong) 0%, var(--paper-soft) 100%);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transition: transform 220ms ease, opacity 220ms ease, visibility 220ms ease;
+    }
+
+    .trip-panel.is-hidden-panel {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(calc(-100% - 18px));
+    }
+
+    .panel-header {
+      padding: 22px 22px 18px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(64, 100, 216, 0.1), transparent 42%),
+        linear-gradient(225deg, rgba(230, 106, 66, 0.08), transparent 34%);
+    }
+
+    .eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Fraunces", serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 0.96;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.55;
+      max-width: 32ch;
+    }
+
+    .stay-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .stay-card {
+      padding: 14px 14px 12px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+    }
+
+    .stay-card .label {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stay-card strong {
+      display: block;
+      font-size: 0.98rem;
+      line-height: 1.4;
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .action-btn,
+    .spot-btn,
+    .spot-link,
+    .filter-chip {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+      transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease;
+    }
+
+    .action-btn {
+      padding: 11px 14px;
+      background: var(--action);
+      color: var(--action-text);
+      box-shadow: 0 10px 24px rgba(22, 34, 56, 0.18);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .action-btn.is-secondary {
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      border: 1px solid rgba(22, 34, 56, 0.1);
+      box-shadow: none;
+    }
+
+    .action-btn.is-tonight-toggle,
+    .filter-chip.is-tonight-preset {
+      background: linear-gradient(135deg, #2d67ff 0%, #ce3ebd 100%);
+      color: #fffaf1;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 14px 28px rgba(106, 73, 191, 0.28);
+    }
+
+    .action-btn.is-tonight-toggle.is-inactive,
+    .filter-chip.is-tonight-preset.is-inactive {
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      border: 1px solid rgba(22, 34, 56, 0.1);
+      box-shadow: none;
+    }
+
+    .action-btn:hover,
+    .spot-btn:hover,
+    .spot-link:hover,
+    .filter-chip:hover {
+      transform: translateY(-1px);
+    }
+
+    .panel-scroll {
+      overflow: auto;
+      padding: 18px 22px 22px;
+    }
+
+    .sidebar-tools {
+      margin: 0 0 18px;
+      padding: 0 0 16px;
+    }
+
+    .search-shell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(22, 34, 56, 0.1);
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.08);
+    }
+
+    .search-shell span {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .spot-search {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.94rem;
+      outline: none;
+    }
+
+    .spot-search::placeholder {
+      color: color-mix(in srgb, var(--muted) 82%, white);
+    }
+
+    .category-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-top: 12px;
+      scrollbar-width: none;
+    }
+
+    .category-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .category-tab {
+      appearance: none;
+      border: 1px solid rgba(22, 34, 56, 0.1);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 9px 12px;
+      font: inherit;
+      font-size: 0.84rem;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+    }
+
+    .category-tab:hover {
+      transform: translateY(-1px);
+    }
+
+    .category-tab.is-active {
+      background: var(--action);
+      color: var(--action-text);
+      border-color: var(--action);
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.16);
+    }
+
+    .category-tab.is-muted {
+      opacity: 0.48;
+    }
+
+    .category-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .category-icon {
+      flex: 0 0 auto;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .category-icon.is-mode {
+      font-size: 0.95rem;
+    }
+
+    .panel-scroll::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .panel-scroll::-webkit-scrollbar-thumb {
+      background: rgba(22, 34, 56, 0.16);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    .section {
+      margin-top: 18px;
+    }
+
+    .section:first-child {
+      margin-top: 0;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(22, 34, 56, 0.1);
+      color: var(--ink);
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+
+    .filter-chip.is-off {
+      opacity: 0.46;
+      background: rgba(255, 255, 255, 0.44);
+      box-shadow: none;
+    }
+
+    .chip-swatch,
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--swatch);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--swatch) 18%, white);
+      flex: 0 0 auto;
+    }
+
+    .chip-swatch.is-metro,
+    .legend-swatch.is-metro {
+      background: linear-gradient(135deg, #009f4d 0 25%, #f08a24 25% 50%, #ffd200 50% 75%, #0079c2 75% 100%);
+      box-shadow: 0 0 0 3px rgba(22, 34, 56, 0.08);
+    }
+
+    .chip-count {
+      display: inline-grid;
+      place-items: center;
+      min-width: 22px;
+      padding: 0 6px;
+      height: 22px;
+      border-radius: 999px;
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .legend-note {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .spot-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .spot-group {
+      display: grid;
+      gap: 12px;
+    }
+
+    .spot-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.68);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .spot-group-header strong {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.98rem;
+    }
+
+    .spot-group-arrow {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+      font-size: 0.82rem;
+      transition: transform 160ms ease;
+    }
+
+    .spot-group-header[aria-expanded="false"] .spot-group-arrow {
+      transform: rotate(-90deg);
+    }
+
+    .spot-group-count {
+      display: inline-grid;
+      place-items: center;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .spot-group-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .spot-card {
+      padding: 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(22, 34, 56, 0.09);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.86) 100%);
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.08);
+    }
+
+    .spot-card.is-selected {
+      border-color: rgba(22, 34, 56, 0.22);
+      box-shadow: 0 18px 32px rgba(22, 34, 56, 0.12);
+    }
+
+    .spot-topline {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .spot-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--badge) 14%, white);
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .spot-badge::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--badge);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--badge) 16%, white);
+    }
+
+    .spot-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .travel-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(22, 34, 56, 0.07);
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .travel-pill.is-distance {
+      color: var(--muted);
+    }
+
+    .spot-card h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      line-height: 1.25;
+    }
+
+    .spot-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .spot-meta {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .spot-hours-inline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .hours-status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+    }
+
+    .hours-status-pill.is-open {
+      background: rgba(47, 158, 114, 0.16);
+      color: #1d7a57;
+    }
+
+    .hours-status-pill.is-closed {
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+    }
+
+    .hours-today {
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .spot-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .spot-btn,
+    .spot-link {
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .spot-btn {
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--ink);
+    }
+
+    .legend-item.is-metro-route,
+    .legend-popover-item.is-metro-route {
+      font-weight: 600;
+    }
+
+    .spot-link {
+      background: var(--action);
+      color: var(--action-text);
+    }
+
+    .empty-state {
+      padding: 18px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px dashed rgba(22, 34, 56, 0.18);
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.55;
+    }
+
+    .map-tools {
+      position: fixed;
+      top: var(--map-tools-top);
+      right: max(18px, calc(env(safe-area-inset-right) + 18px));
+      z-index: 750;
+      width: max-content;
+      pointer-events: none;
+    }
+
+    .tool-cluster {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 14px 30px rgba(22, 34, 56, 0.12);
+      pointer-events: auto;
+    }
+
+    .weather-pill {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.86);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.12);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      color: var(--ink);
+      font-size: 0.82rem;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .service-pill {
+      position: absolute;
+      top: calc(100% + 56px);
+      right: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.86);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.12);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      color: var(--ink);
+      font-size: 0.77rem;
+      font-weight: 700;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .service-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #8c98ab;
+      box-shadow: 0 0 0 4px rgba(140, 152, 171, 0.16);
+      flex: 0 0 auto;
+    }
+
+    .service-pill.is-live .service-dot {
+      background: #2f9e72;
+      box-shadow: 0 0 0 4px rgba(47, 158, 114, 0.18);
+    }
+
+    .service-pill.is-down .service-dot {
+      background: #da3f68;
+      box-shadow: 0 0 0 4px rgba(218, 63, 104, 0.18);
+    }
+
+    .weather-icon {
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .weather-meta {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0;
+      white-space: nowrap;
+    }
+
+    .weather-temp {
+      font-size: 0.88rem;
+    }
+
+    .map-tool-btn {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      box-shadow: 0 8px 18px rgba(22, 34, 56, 0.1);
+      transition: transform 160ms ease, background-color 160ms ease, opacity 160ms ease;
+    }
+
+    .map-tool-btn:hover,
+    .map-tool-btn:focus-visible {
+      transform: translateY(-1px);
+      outline: none;
+      background: rgba(255, 255, 255, 0.98);
+    }
+
+    .map-tool-btn.is-active {
+      background: var(--action);
+      color: var(--action-text);
+      border-color: var(--action);
+    }
+
+    .map-tool-btn.is-primary {
+      min-height: 42px;
+      padding: 0 15px;
+      font-size: 0.9rem;
+    }
+
+    .map-tool-btn.is-compact {
+      width: 42px;
+      height: 42px;
+      font-size: 1rem;
+      display: grid;
+      place-items: center;
+    }
+
+    .tool-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: currentColor;
+    }
+
+    #locateFab {
+      font-size: 1.08rem;
+    }
+
+    .legend-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 56px;
+      min-width: 190px;
+      max-width: min(240px, calc(100vw - 36px));
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255, 250, 241, 0.96);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 14px 30px rgba(22, 34, 56, 0.12);
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      visibility: hidden;
+      transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+    }
+
+    .filters-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 104px;
+      min-width: 230px;
+      max-width: min(320px, calc(100vw - 36px));
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255, 250, 241, 0.96);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 14px 30px rgba(22, 34, 56, 0.12);
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      visibility: hidden;
+      transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+    }
+
+    .map-tools.is-legend-open .legend-popover {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      visibility: visible;
+    }
+
+    .map-tools.is-filters-open .filters-popover {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      visibility: visible;
+    }
+
+    .popover-title {
+      margin: 0 0 10px;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .legend-popover-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .legend-popover-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .legend-popover-section {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(22, 34, 56, 0.08);
+    }
+
+    .metro-live-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .metro-live-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      font-size: 0.82rem;
+      color: var(--ink);
+    }
+
+    .metro-live-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      font-weight: 700;
+    }
+
+    .metro-line-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--line-color);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--line-color) 20%, white);
+      flex: 0 0 auto;
+    }
+
+    .metro-live-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(22, 34, 56, 0.08);
+      color: var(--muted);
+    }
+
+    .metro-live-status.is-normal {
+      background: rgba(47, 158, 114, 0.14);
+      color: #1d7a57;
+    }
+
+    .metro-live-status.is-advisory {
+      background: rgba(64, 100, 216, 0.14);
+      color: #4064d8;
+    }
+
+    .metro-live-status.is-disrupted {
+      background: rgba(240, 138, 36, 0.16);
+      color: #b86513;
+    }
+
+    .metro-live-status.is-major {
+      background: rgba(218, 63, 104, 0.18);
+      color: #b7274e;
+    }
+
+    .metro-live-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.4;
+    }
+
+    .filters-popover-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .filters-popover .filter-chip {
+      width: 100%;
+      justify-content: space-between;
+      padding: 11px 12px;
+      font-size: 0.84rem;
+    }
+
+    .leaflet-control-zoom {
+      border: 0;
+      box-shadow: 0 12px 24px rgba(22, 34, 56, 0.14);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .leaflet-control-zoom a {
+      width: 40px;
+      height: 40px;
+      line-height: 40px;
+      border-bottom: 1px solid rgba(22, 34, 56, 0.08);
+      color: var(--ink);
+    }
+
+    .leaflet-control-scale-line {
+      border-color: rgba(22, 34, 56, 0.32);
+      background: rgba(255, 250, 241, 0.86);
+      color: var(--ink);
+    }
+
+    .leaflet-popup-content-wrapper {
+      padding: 0;
+      border-radius: 22px;
+      box-shadow: 0 18px 40px rgba(22, 34, 56, 0.2);
+      overflow: hidden;
+    }
+
+    .leaflet-popup-content {
+      margin: 0;
+      min-width: 250px;
+    }
+
+    .leaflet-popup-tip {
+      box-shadow: none;
+    }
+
+    .leaflet-container a.leaflet-popup-close-button {
+      top: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.92);
+      color: var(--ink);
+      font-size: 20px;
+      font-weight: 700;
+      box-shadow: 0 8px 18px rgba(22, 34, 56, 0.12);
+      z-index: 3;
+    }
+
+    .leaflet-container a.leaflet-popup-close-button:hover {
+      background: rgba(255, 255, 255, 0.98);
+      color: var(--ink);
+    }
+
+    .popup-card {
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 248, 239, 0.96) 100%);
+    }
+
+    .popup-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .popup-kicker::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--badge);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--badge) 18%, white);
+    }
+
+    .popup-card h3 {
+      margin: 0;
+      font-size: 1.18rem;
+      line-height: 1.2;
+    }
+
+    .popup-card p {
+      margin: 10px 0 0;
+      font-size: 0.94rem;
+      line-height: 1.52;
+      color: var(--muted);
+    }
+
+    .popup-meta,
+    .popup-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .popup-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .popup-service-note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: rgba(22, 34, 56, 0.05);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .popup-hours {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(22, 34, 56, 0.05);
+      border: 1px solid rgba(22, 34, 56, 0.08);
+    }
+
+    .popup-hours-topline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .popup-hours-caption {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .popup-hours-today {
+      margin-top: 10px;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    .popup-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      margin-top: 14px;
+      padding: 0 14px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--action-text);
+      background: var(--action);
+      box-shadow: 0 10px 24px rgba(22, 34, 56, 0.14);
+    }
+
+    .category-marker {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.92);
+      color: white;
+      font-size: 1rem;
+      line-height: 1;
+      font-weight: 700;
+      box-shadow: 0 14px 22px rgba(22, 34, 56, 0.26);
+      background: var(--marker);
+    }
+
+    .category-marker::before {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--marker) 22%, transparent);
+      z-index: -1;
+    }
+
+    .category-marker::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      width: 14px;
+      height: 14px;
+      background: var(--marker);
+      border-right: 2px solid rgba(255, 255, 255, 0.92);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.92);
+      transform: translateX(-50%) rotate(45deg);
+      border-bottom-right-radius: 4px;
+      z-index: -1;
+    }
+
+    .current-user-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--success);
+      border: 3px solid rgba(255, 255, 255, 0.92);
+      box-shadow: 0 0 0 10px rgba(47, 158, 114, 0.18);
+    }
+
+    @media (max-width: 980px) {
+      .trip-panel {
+        width: min(360px, calc(100vw - 32px));
+      }
+
+      .legend-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .trip-panel {
+        top: auto;
+        left: 12px;
+        right: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: auto;
+        max-height: min(76vh, 620px);
+        overflow: auto;
+      }
+
+      .trip-panel.is-collapsed {
+        max-height: 198px;
+      }
+
+      .trip-panel.is-collapsed .panel-scroll {
+        display: none;
+      }
+
+      .trip-panel.is-hidden-panel {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(calc(100% + 18px));
+      }
+
+      .panel-header {
+        padding: 18px 18px 16px;
+      }
+
+      .panel-scroll {
+        overflow: visible;
+        padding: 16px 18px 18px;
+      }
+
+      .sidebar-tools {
+        position: static;
+        top: auto;
+        z-index: auto;
+        margin: 0 0 16px;
+        padding: 0 0 14px;
+        background: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      .stay-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .map-tools {
+        top: var(--map-tools-top);
+        left: calc(50% + 46px);
+        right: auto;
+        width: max-content;
+        max-width: calc(100vw - 24px);
+        transform: translateX(-50%);
+      }
+
+      .tool-cluster {
+        padding: 6px;
+        gap: 6px;
+      }
+
+      .weather-pill {
+        top: 0;
+        right: calc(100% + 4px);
+        width: auto;
+        min-height: 52px;
+        justify-content: center;
+        padding: 0 12px;
+        font-size: 0.78rem;
+      }
+
+      .service-pill {
+        top: calc(100% + 6px);
+        right: 0;
+        min-height: 32px;
+        justify-content: center;
+        padding: 0 12px;
+        font-size: 0.72rem;
+      }
+
+      .weather-temp {
+        font-size: 0.84rem;
+      }
+
+      .legend-popover {
+        right: 56px;
+        min-width: 170px;
+        max-width: min(220px, calc(100vw - 24px));
+      }
+
+      .filters-popover {
+        right: 104px;
+        min-width: 210px;
+        max-width: min(260px, calc(100vw - 24px));
+      }
+
+      .leaflet-popup-content-wrapper {
+        border-radius: 18px;
+        max-width: min(260px, calc(100vw - 42px));
+      }
+
+      .leaflet-popup-content {
+        min-width: 0;
+      }
+
+      .popup-card {
+        padding: 14px;
+      }
+
+      .popup-kicker {
+        margin-bottom: 10px;
+        font-size: 0.7rem;
+      }
+
+      .popup-card h3 {
+        font-size: 1rem;
+      }
+
+      .popup-card p,
+      .popup-meta,
+      .popup-note {
+        font-size: 0.84rem;
+        line-height: 1.42;
+      }
+
+      .popup-hours {
+        padding: 10px;
+        border-radius: 16px;
+      }
+
+      .popup-hours-today {
+        font-size: 0.76rem;
+      }
+
+      .popup-link {
+        min-height: 38px;
+        margin-top: 12px;
+        padding: 0 12px;
+        font-size: 0.84rem;
+      }
+
+      .quick-actions {
+        gap: 8px;
+      }
+
+      .action-btn {
+        flex: 1 1 140px;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 540px) {
+      h1 {
+        font-size: 2.15rem;
+      }
+
+      .subtitle {
+        max-width: none;
+      }
+
+      .stay-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .spot-actions {
+        flex-direction: column;
+      }
+
+      .spot-btn,
+      .spot-link {
+        width: 100%;
+        text-align: center;
+      }
+
+      .map-tool-btn.is-primary {
+        min-height: 40px;
+        padding: 0 13px;
+        font-size: 0.84rem;
+      }
+
+      .map-tool-btn.is-compact {
+        width: 40px;
+        height: 40px;
+      }
+
+      .legend-popover {
+        right: 48px;
+      }
+
+      .filters-popover {
+        right: 96px;
+      }
+    }
+
+    body.is-dark-map {
+      background:
+        radial-gradient(circle at top left, rgba(64, 100, 216, 0.18), transparent 38%),
+        radial-gradient(circle at top right, rgba(218, 63, 104, 0.14), transparent 34%),
+        linear-gradient(180deg, #26303d 0%, #313c4b 100%);
+      color: #f3f6fb;
+    }
+
+    body.is-dark-map::before {
+      background-image:
+        linear-gradient(rgba(243, 246, 251, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(243, 246, 251, 0.04) 1px, transparent 1px);
+    }
+
+    body.is-dark-map .leaflet-tile {
+      filter: brightness(1.34) saturate(0.88) contrast(0.86);
+    }
+
+    body.is-dark-map .trip-panel,
+    body.is-dark-map .tool-cluster,
+    body.is-dark-map .weather-pill,
+    body.is-dark-map .service-pill,
+    body.is-dark-map .legend-popover,
+    body.is-dark-map .filters-popover {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(44, 54, 66, 0.94) 0%, rgba(56, 68, 82, 0.9) 100%);
+      box-shadow: 0 20px 44px rgba(8, 12, 18, 0.28);
+    }
+
+    body.is-dark-map .panel-header {
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(135deg, rgba(64, 100, 216, 0.18), transparent 42%),
+        linear-gradient(225deg, rgba(230, 106, 66, 0.12), transparent 34%);
+    }
+
+    body.is-dark-map .subtitle,
+    body.is-dark-map .eyebrow,
+    body.is-dark-map .stay-card .label,
+    body.is-dark-map .spot-card p,
+    body.is-dark-map .spot-meta,
+    body.is-dark-map .spot-hours-inline,
+    body.is-dark-map .popover-title,
+    body.is-dark-map .legend-note,
+    body.is-dark-map .search-shell span {
+      color: rgba(232, 238, 246, 0.78);
+    }
+
+    body.is-dark-map .stay-card,
+    body.is-dark-map .search-shell,
+    body.is-dark-map .category-tab,
+    body.is-dark-map .spot-group-header,
+    body.is-dark-map .spot-card,
+    body.is-dark-map .popup-hours,
+    body.is-dark-map .popup-service-note,
+    body.is-dark-map .metro-live-item,
+    body.is-dark-map .legend-popover-item,
+    body.is-dark-map .legend-item,
+    body.is-dark-map .filter-chip,
+    body.is-dark-map .weather-pill,
+    body.is-dark-map .service-pill,
+    body.is-dark-map .leaflet-container a.leaflet-popup-close-button {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: #f3f6fb;
+    }
+
+    body.is-dark-map .category-tab.is-active,
+    body.is-dark-map .map-tool-btn.is-active,
+    body.is-dark-map .action-btn,
+    body.is-dark-map .spot-link,
+    body.is-dark-map .popup-link {
+      background: #f3f6fb;
+      color: #0f1829;
+      border-color: #f3f6fb;
+    }
+
+    body.is-dark-map .action-btn.is-secondary,
+    body.is-dark-map .map-tool-btn,
+    body.is-dark-map .spot-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f3f6fb;
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    body.is-dark-map .travel-pill,
+    body.is-dark-map .hours-status-pill.is-closed,
+    body.is-dark-map .spot-group-count,
+    body.is-dark-map .spot-group-arrow,
+    body.is-dark-map .chip-count {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(232, 238, 246, 0.8);
+    }
+
+    body.is-dark-map .hours-status-pill.is-open {
+      background: rgba(47, 158, 114, 0.22);
+      color: #b4f0d4;
+    }
+
+    body.is-dark-map .popup-card {
+      background: linear-gradient(180deg, rgba(47, 58, 72, 0.98) 0%, rgba(56, 68, 82, 0.96) 100%);
+    }
+
+    body.is-dark-map .popup-card h3 {
+      color: #f3f6fb;
+    }
+
+    body.is-dark-map .hours-today,
+    body.is-dark-map .popup-hours-today,
+    body.is-dark-map .metro-live-line,
+    body.is-dark-map .popup-service-note {
+      color: #f3f6fb;
+    }
+
+    body.is-dark-map .metro-live-note {
+      color: rgba(232, 238, 246, 0.78);
+    }
+
+    body.is-dark-map .metro-live-status.is-normal {
+      background: rgba(47, 158, 114, 0.22);
+      color: #b4f0d4;
+    }
+
+    body.is-dark-map .metro-live-status.is-advisory {
+      background: rgba(64, 100, 216, 0.22);
+      color: #c3d1ff;
+    }
+
+    body.is-dark-map .metro-live-status.is-disrupted {
+      background: rgba(240, 138, 36, 0.24);
+      color: #ffd3a1;
+    }
+
+    body.is-dark-map .metro-live-status.is-major {
+      background: rgba(218, 63, 104, 0.24);
+      color: #ffc1d0;
+    }
+
+    body.is-dark-map .leaflet-popup-content-wrapper {
+      background: rgba(47, 58, 72, 0.98);
+    }
+
+    body.is-dark-map .leaflet-control-zoom a,
+    body.is-dark-map .leaflet-control-scale-line {
+      background: rgba(47, 58, 72, 0.94);
+      color: #f3f6fb;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    body.is-dark-map .current-user-dot {
+      border-color: rgba(47, 58, 72, 0.96);
+      box-shadow: 0 0 0 10px rgba(47, 158, 114, 0.24);
+    }
+
+    body.is-tonight .trip-panel,
+    body.is-tonight .tool-cluster,
+    body.is-tonight .legend-popover,
+    body.is-tonight .filters-popover {
+      box-shadow:
+        0 22px 48px rgba(23, 33, 56, 0.22),
+        0 0 0 1px rgba(206, 62, 189, 0.14),
+        0 0 36px rgba(45, 103, 255, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map" aria-label="Interactive Montreal trip map"></div>
+
+    <aside class="trip-panel" id="tripPanel">
+      <div class="panel-header">
+        <div class="eyebrow">Montreal Trip / March 15-17, 2026</div>
+        <h1>Montreal Boys Trip 2026</h1>
+        <p class="subtitle">
+          Pablo, Bakes, Nooper, Phoen, and Bonehead take on Montreal.
+        </p>
+
+        <div class="stay-grid">
+          <div class="stay-card">
+            <span class="label">Check-in</span>
+            <strong>Sunday, March 15<br>4:00 PM</strong>
+          </div>
+          <div class="stay-card">
+            <span class="label">Check-out</span>
+            <strong>Tuesday, March 17<br>11:00 AM</strong>
+          </div>
+        </div>
+
+        <div class="quick-actions">
+          <button class="action-btn" id="showAllBtn" type="button">Show all spots</button>
+          <button class="action-btn is-tonight-toggle is-inactive" id="tonightModeBtn" type="button" aria-pressed="false">Tonight mode</button>
+          <button class="action-btn is-secondary" id="hotelBtn" type="button">Back to hotel</button>
+        </div>
+      </div>
+
+      <div class="panel-scroll">
+        <div class="sidebar-tools" id="sidebarTools">
+          <label class="search-shell" for="spotSearch">
+            <span>Search</span>
+            <input class="spot-search" id="spotSearch" type="search" placeholder="Find a spot" autocomplete="off">
+          </label>
+          <div class="category-tabs" id="categoryTabs"></div>
+        </div>
+        <div class="spot-list" id="spotList"></div>
+      </div>
+    </aside>
+
+    <div class="map-tools" id="mapTools">
+      <div class="tool-cluster">
+        <button class="map-tool-btn is-primary" id="panelFab" type="button" aria-expanded="true">Trip</button>
+        <button class="map-tool-btn is-compact" id="locateFab" type="button" aria-label="Locate me">⌖</button>
+        <button class="map-tool-btn is-compact" id="themeBtn" type="button" aria-pressed="false" aria-label="Toggle dark mode">☾</button>
+        <button class="map-tool-btn is-compact" id="filtersBtn" type="button" aria-expanded="false" aria-label="Show filters">
+          <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5.5C3 4.67 3.67 4 4.5 4h15a1.5 1.5 0 0 1 1.06 2.56L14 13.12V18a1 1 0 0 1-.45.83l-3 2A1 1 0 0 1 9 20v-6.88L3.44 6.56A1.5 1.5 0 0 1 3 5.5Z"></path>
+          </svg>
+        </button>
+        <button class="map-tool-btn is-compact" id="legendBtn" type="button" aria-expanded="false" aria-label="Show map legend">☰</button>
+      </div>
+      <div class="weather-pill" id="weatherPill" aria-live="polite" aria-label="Current Montreal weather">
+        <span class="weather-icon" id="weatherIcon">⛅</span>
+        <span class="weather-meta">
+          <span class="weather-temp" id="weatherTemp">--°F</span>
+        </span>
+      </div>
+      <div class="service-pill" id="metroLivePill" aria-live="polite" aria-label="STM live status unknown">
+        <span class="service-dot" id="metroLiveDot"></span>
+        <span id="metroLiveText">STM unknown</span>
+      </div>
+      <div class="filters-popover" id="filtersPopover">
+        <div class="popover-title">Filters</div>
+        <div class="filters-popover-list" id="mobileFilters"></div>
+      </div>
+      <div class="legend-popover" id="legendPopover">
+        <div class="popover-title">Map Legend</div>
+        <div class="legend-popover-grid" id="mobileLegend"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./metro-data.js"></script>
+  <script>
+    const categories = {
+      hotel: { label: 'Hotel', color: '#d1a337', short: 'H', icon: '🛏️' },
+      food: { label: 'Food', color: '#e66a42', short: 'F', icon: '🥪' },
+      bars: { label: 'Bars', color: '#0d8b8f', short: 'B', icon: '🍺' },
+      nightlife: { label: 'Nightlife', color: '#da3f68', short: 'N', icon: '🪩' },
+      dispensary: { label: 'Dispensary', color: '#3aa655', short: 'D', icon: '🍃' },
+      sightseeing: { label: 'Sightseeing', color: '#4064d8', short: 'S', icon: '🔭' }
+    };
+
+    const spots = [
+      {
+        id: 'hotel',
+        name: 'Hotel Saint-Laurent Montreal',
+        category: 'hotel',
+        lat: 45.5106,
+        lng: -73.5607,
+        address: '191 Rene-Levesque Blvd E',
+        description: 'Your downtown home base for the trip.',
+        note: 'Check-in Sunday, March 15, 2026 at 4:00 PM. Check-out Tuesday, March 17, 2026 at 11:00 AM.',
+        directionsQuery: 'Hotel Saint-Laurent Montreal 191 Rene-Levesque Blvd E Montreal QC'
+      },
+      {
+        id: 'quai-des-brumes',
+        name: 'Quai des Brumes',
+        category: 'bars',
+        lat: 45.5240,
+        lng: -73.5824,
+        address: '4481 Rue Saint-Denis',
+        description: 'Late-night live music bar in the Plateau.',
+        note: 'Your note: live music, open late every night.',
+        directionsQuery: 'Quai des Brumes 4481 Rue Saint-Denis Montreal QC'
+      },
+      {
+        id: 'mckibbins',
+        name: "McKibbin's Irish Pub",
+        category: 'bars',
+        lat: 45.4968,
+        lng: -73.5773,
+        address: '1426 Rue Bishop',
+        description: 'Classic downtown Irish pub open late.',
+        note: 'Your note: open until 3:00 AM every night.',
+        directionsQuery: "McKibbin's Irish Pub 1426 Rue Bishop Montreal QC"
+      },
+      {
+        id: 'mad-hatter-pub',
+        name: 'Mad Hatter Pub',
+        category: 'bars',
+        lat: 45.4967119,
+        lng: -73.5752588,
+        address: '1240 Rue Crescent',
+        description: 'Casual downtown pub on Crescent.',
+        note: 'Good backup bar near McKibbin’s and the downtown hotel corridor.',
+        directionsQuery: 'Mad Hatter Pub 1240 Rue Crescent Montreal QC'
+      },
+      {
+        id: 'atwater-cocktail-club',
+        name: 'Atwater Cocktail Club',
+        category: 'bars',
+        lat: 45.4813175,
+        lng: -73.5783886,
+        address: '512 Avenue Atwater',
+        description: 'Destination cocktail bar in Saint-Henri.',
+        note: 'A bit farther from the hotel, but worth it if you want a stronger bar experience.',
+        directionsQuery: 'Atwater Cocktail Club 512 Avenue Atwater Montreal QC'
+      },
+      {
+        id: 'bar-leonor',
+        name: 'Bar Leonor',
+        category: 'bars',
+        lat: 45.5084454,
+        lng: -73.5607413,
+        address: '1106B Boulevard Saint-Laurent',
+        description: 'Central Saint-Laurent bar near Chinatown.',
+        note: 'Very close to the hotel and easy to pair with downtown nightlife.',
+        directionsQuery: 'Bar Leonor 1106 Boulevard Saint-Laurent Montreal QC'
+      },
+      {
+        id: 'old-montreal',
+        name: 'Old Montreal',
+        category: 'sightseeing',
+        lat: 45.5078,
+        lng: -73.5544,
+        radius: 420,
+        address: 'Start around Place Jacques-Cartier and Rue Saint-Paul',
+        description: 'Cobblestone streets and classic old-city atmosphere.',
+        note: 'Use this marker as the anchor, then wander on foot.',
+        directionsQuery: 'Place Jacques-Cartier Montreal QC'
+      },
+      {
+        id: 'mount-royal-park',
+        name: 'Mount Royal Park',
+        category: 'sightseeing',
+        lat: 45.5039043,
+        lng: -73.5875096,
+        address: 'Chalet du Mont-Royal, 2000 Chemin Remembrance',
+        description: 'Classic overlook for the best city view.',
+        note: 'This pin is set at the chalet/overlook area rather than the entire park.',
+        directionsQuery: 'Chalet du Mont-Royal 2000 Chemin Remembrance Montreal QC'
+      },
+      {
+        id: 'ferris-wheel',
+        name: 'La Grande Roue de Montreal',
+        category: 'sightseeing',
+        lat: 45.5084814,
+        lng: -73.5486577,
+        address: "Rue du Quai-de-l'Horloge, Old Port",
+        description: 'Old Port ferris wheel with waterfront views.',
+        note: 'Best paired with an Old Montreal or Old Port walk.',
+        directionsQuery: 'La Grande Roue de Montreal Montreal QC'
+      },
+      {
+        id: 'centre-bell',
+        name: 'Centre Bell',
+        category: 'sightseeing',
+        lat: 45.4960,
+        lng: -73.5693,
+        address: '1909 Avenue des Canadiens-de-Montréal',
+        description: 'Major downtown arena and landmark.',
+        note: 'Worth pinning even if you are just passing by rather than catching a game or show.',
+        directionsQuery: 'Centre Bell 1909 Avenue des Canadiens-de-Montreal Montreal QC'
+      },
+      {
+        id: 'reso-complexe-desjardins',
+        name: 'RESO / Underground City Entry',
+        category: 'sightseeing',
+        lat: 45.5074565,
+        lng: -73.5644254,
+        address: 'Complexe Desjardins, 150 Rue Sainte-Catherine O',
+        description: 'Main RESO entry at Complexe Desjardins.',
+        note: 'Use this as the starting pin for a RESO wander.',
+        directionsQuery: 'Complexe Desjardins 150 Rue Sainte-Catherine O Montreal QC'
+      },
+      {
+        id: 'plateau-mile-end',
+        name: 'Plateau / Mile End',
+        category: 'sightseeing',
+        lat: 45.5239,
+        lng: -73.5924,
+        radius: 700,
+        address: 'Start around Saint-Laurent Blvd, Mont-Royal, and Fairmount',
+        description: 'Best area to wander for cafes, shops, and bars.',
+        note: 'This is a neighborhood-center pin, not a single venue.',
+        directionsQuery: 'Mile End Montreal QC'
+      },
+      {
+        id: 'chez-paree',
+        name: 'Chez Paree',
+        category: 'nightlife',
+        lat: 45.4989,
+        lng: -73.5731,
+        address: '1258 Rue Stanley',
+        description: 'Classic downtown late-night stop.',
+        note: 'Your note: most popular strip club.',
+        directionsQuery: 'Chez Paree 1258 Rue Stanley Montreal QC'
+      },
+      {
+        id: 'cabaret-kingdom',
+        name: 'Cabaret Kingdom',
+        category: 'nightlife',
+        lat: 45.5103183,
+        lng: -73.5640650,
+        address: '1417 Boulevard Saint-Laurent',
+        description: 'Central nightlife spot near Saint-Laurent.',
+        note: 'Works if you want to stay close to Saint-Laurent rather than go back west.',
+        directionsQuery: 'Cabaret Kingdom 1417 Boulevard Saint-Laurent Montreal QC'
+      },
+      {
+        id: 'sex-appeal',
+        name: 'Sex Appeal',
+        category: 'nightlife',
+        lat: 45.5059147,
+        lng: -73.5676294,
+        address: '381 Rue Sainte-Catherine O',
+        description: 'Downtown nightlife stop in the entertainment district.',
+        note: 'Very central to Sainte-Catherine and Quartier des Spectacles.',
+        directionsQuery: 'Sex Appeal 381 Rue Sainte-Catherine O Montreal QC'
+      },
+      {
+        id: 'la-banquise',
+        name: 'La Banquise',
+        category: 'food',
+        lat: 45.5253,
+        lng: -73.5750,
+        address: '994 Rue Rachel E',
+        description: 'Iconic late-night poutine spot.',
+        note: 'Your note: 24-hour poutine move.',
+        directionsQuery: 'La Banquise 994 Rue Rachel E Montreal QC'
+      },
+      {
+        id: 'dunns-famous',
+        name: "Dunn's Famous",
+        category: 'food',
+        lat: 45.50055,
+        lng: -73.57164,
+        address: '1249 Rue Metcalfe',
+        description: 'Downtown smoked meat spot open late.',
+        note: 'Strong night-food option near Crescent and the downtown bar strip.',
+        directionsQuery: "Dunn's Famous 1249 Rue Metcalfe Montreal QC"
+      },
+      {
+        id: 'fairmount-bagel',
+        name: 'Fairmount Bagel',
+        category: 'food',
+        lat: 45.52289,
+        lng: -73.59523,
+        address: '74 Avenue Fairmount O',
+        description: 'Iconic Mile End bagel stop open all day and night.',
+        note: 'Use the original bakery for a real late-night Montreal bagel run.',
+        directionsQuery: 'Fairmount Bagel 74 Avenue Fairmount O Montreal QC'
+      },
+      {
+        id: 'miami-deli',
+        name: 'Miami Deli',
+        category: 'food',
+        lat: 45.5412,
+        lng: -73.5552,
+        address: '3090 Rue Sherbrooke E',
+        description: '24-hour diner with a huge comfort-food menu.',
+        note: 'Classic late-night move if you want breakfast or diner food at any hour.',
+        directionsQuery: 'Miami Deli 3090 Rue Sherbrooke E Montreal QC'
+      },
+      {
+        id: 'olive-et-gourmando',
+        name: 'Olive et Gourmando',
+        category: 'food',
+        lat: 45.5018,
+        lng: -73.5556,
+        address: '351 Rue Saint-Paul O',
+        description: 'Old Montreal brunch and pastry staple.',
+        note: 'Great breakfast/brunch option in Old Montreal.',
+        directionsQuery: 'Olive et Gourmando 351 Rue Saint-Paul O Montreal QC'
+      },
+      {
+        id: 'eggspectation-desjardins',
+        name: 'Eggspectation Complexe Desjardins',
+        category: 'food',
+        lat: 45.5074565,
+        lng: -73.5644254,
+        address: '150 Rue Sainte-Catherine O',
+        description: 'Brunch spot right at Complexe Desjardins.',
+        note: 'Very easy breakfast option near the hotel and RESO.',
+        directionsQuery: 'Eggspectation Complexe Desjardins 150 Rue Sainte-Catherine O Montreal QC'
+      },
+      {
+        id: 'dobe-andy',
+        name: 'Dobe & Andy',
+        category: 'food',
+        lat: 45.5079,
+        lng: -73.5625,
+        address: '1111 Rue Saint-Urbain',
+        description: 'Chinatown roast meats and buns.',
+        note: 'Very easy to pair with Chinatown, Bar Leonor, or the RESO entrance.',
+        directionsQuery: 'Dobe & Andy 1111 Rue Saint-Urbain Montreal QC'
+      },
+      {
+        id: 'hoang-oanh',
+        name: 'Hoang Oanh Sandwich',
+        category: 'food',
+        lat: 45.5081,
+        lng: -73.5608,
+        address: '1071 Boulevard Saint-Laurent',
+        description: 'Quick Chinatown banh mi stop.',
+        note: 'Best as a grab-and-go stop in the middle of the day.',
+        directionsQuery: 'Hoang Oanh Sandwich 1071 Boulevard Saint-Laurent Montreal QC'
+      },
+      {
+        id: 'lalis',
+        name: "Lali's",
+        category: 'food',
+        lat: 45.4981,
+        lng: -73.5755,
+        address: '2035 Rue Crescent',
+        description: 'Downtown food stop near Crescent.',
+        note: 'Easy to combine with McKibbin’s, Mad Hatter, or Centre Bell.',
+        directionsQuery: "Lali's 2035 Rue Crescent Montreal QC"
+      },
+      {
+        id: 'deville-dinerbar',
+        name: 'Deville Dinerbar',
+        category: 'food',
+        lat: 45.4998776,
+        lng: -73.5741587,
+        address: '1425 Rue Stanley',
+        description: 'Downtown dinerbar with a solid brunch option.',
+        note: 'Good western-downtown breakfast/brunch stop.',
+        directionsQuery: 'Deville Dinerbar 1425 Rue Stanley Montreal QC'
+      },
+      {
+        id: 'mono',
+        name: 'MONO',
+        category: 'food',
+        lat: 45.4988,
+        lng: -73.5752,
+        address: '2110 Rue Crescent',
+        description: 'Crescent-area food stop near downtown bars.',
+        note: 'Recent online listings have been inconsistent, so verify before heading there.',
+        directionsQuery: 'MONO 2110 Rue Crescent Montreal QC'
+      },
+      {
+        id: 'schwartzs',
+        name: "Schwartz's Deli",
+        category: 'food',
+        lat: 45.5164,
+        lng: -73.5775,
+        address: '3895 Boulevard Saint-Laurent',
+        description: 'Classic Montreal smoked meat sandwich stop.',
+        note: 'Classic Montreal food stop.',
+        directionsQuery: "Schwartz's Deli 3895 Boulevard Saint-Laurent Montreal QC"
+      },
+      {
+        id: 'sqdc-crescent',
+        name: 'SQDC Crescent',
+        category: 'dispensary',
+        lat: 45.4972490,
+        lng: -73.5760915,
+        address: '1414 Rue Crescent',
+        description: 'Legal cannabis shop near Crescent.',
+        note: 'Quebec legal retail is through SQDC.',
+        directionsQuery: 'SQDC 1414 Rue Crescent Montreal QC'
+      },
+      {
+        id: 'sqdc-village',
+        name: 'SQDC Le Village',
+        category: 'dispensary',
+        lat: 45.5239302,
+        lng: -73.5509369,
+        address: '1984 Rue Sainte-Catherine E',
+        description: 'Legal cannabis shop in the Village.',
+        note: 'Quebec legal retail is through SQDC.',
+        directionsQuery: 'SQDC 1984 Rue Sainte-Catherine E Montreal QC'
+      }
+    ];
+
+    const travelTimesBySpotId = {
+      hotel: { walk: '0 min', metro: '0 min' },
+      'quai-des-brumes': { walk: '34 min', metro: '16 min' },
+      mckibbins: { walk: '20 min', metro: '14 min' },
+      'mad-hatter-pub': { walk: '19 min', metro: '13 min' },
+      'atwater-cocktail-club': { walk: '41 min', metro: '23 min' },
+      'bar-leonor': { walk: '6 min', metro: '7 min' },
+      'old-montreal': { walk: '12 min', metro: '8 min' },
+      'mount-royal-park': { walk: '41 min', metro: '23 min' },
+      'ferris-wheel': { walk: '19 min', metro: '13 min' },
+      'centre-bell': { walk: '26 min', metro: '17 min' },
+      'reso-complexe-desjardins': { walk: '7 min', metro: '5 min' },
+      'plateau-mile-end': { walk: '43 min', metro: '24 min' },
+      'chez-paree': { walk: '22 min', metro: '14 min' },
+      'cabaret-kingdom': { walk: '9 min', metro: '6 min' },
+      'sex-appeal': { walk: '12 min', metro: '8 min' },
+      'la-banquise': { walk: '32 min', metro: '17 min' },
+      'dunns-famous': { walk: '22 min', metro: '14 min' },
+      'fairmount-bagel': { walk: '40 min', metro: '22 min' },
+      'miami-deli': { walk: '39 min', metro: '20 min' },
+      'olive-et-gourmando': { walk: '17 min', metro: '11 min' },
+      'eggspectation-desjardins': { walk: '9 min', metro: '6 min' },
+      'dobe-andy': { walk: '8 min', metro: '6 min' },
+      'hoang-oanh': { walk: '7 min', metro: '6 min' },
+      lalis: { walk: '23 min', metro: '15 min' },
+      'deville-dinerbar': { walk: '24 min', metro: '15 min' },
+      mono: { walk: '24 min', metro: '16 min' },
+      schwartzs: { walk: '24 min', metro: '14 min' },
+      'sqdc-crescent': { walk: '21 min', metro: '14 min' },
+      'sqdc-village': { walk: '23 min', metro: '14 min' }
+    };
+
+    const hoursBySpotId = {
+      'quai-des-brumes': {
+        sun: '4:00 PM - 3:00 AM',
+        mon: '4:00 PM - 3:00 AM',
+        tue: '4:00 PM - 3:00 AM',
+        wed: '4:00 PM - 3:00 AM',
+        thu: '4:00 PM - 3:00 AM',
+        fri: '4:00 PM - 3:00 AM',
+        sat: '4:00 PM - 3:00 AM'
+      },
+      mckibbins: {
+        sun: '11:30 AM - 3:00 AM',
+        mon: '11:30 AM - 3:00 AM',
+        tue: '11:30 AM - 3:00 AM',
+        wed: '11:30 AM - 3:00 AM',
+        thu: '11:30 AM - 3:00 AM',
+        fri: '11:30 AM - 3:00 AM',
+        sat: '11:30 AM - 3:00 AM'
+      },
+      'mad-hatter-pub': {
+        sun: '5:00 PM - 3:00 AM',
+        mon: '5:00 PM - 3:00 AM',
+        tue: '5:00 PM - 3:00 AM',
+        wed: '5:00 PM - 3:00 AM',
+        thu: '5:00 PM - 3:00 AM',
+        fri: '5:00 PM - 3:00 AM',
+        sat: '5:00 PM - 3:00 AM'
+      },
+      'atwater-cocktail-club': {
+        sun: '5:00 PM - 3:00 AM',
+        mon: '5:00 PM - 3:00 AM',
+        tue: '5:00 PM - 3:00 AM',
+        wed: '5:00 PM - 3:00 AM',
+        thu: '5:00 PM - 3:00 AM',
+        fri: '5:00 PM - 3:00 AM',
+        sat: '5:00 PM - 3:00 AM'
+      },
+      'bar-leonor': {
+        sun: '5:00 PM - 3:00 AM',
+        mon: 'Closed',
+        tue: '5:00 PM - 2:00 AM',
+        wed: '5:00 PM - 2:00 AM',
+        thu: '5:00 PM - 2:00 AM',
+        fri: '5:00 PM - 3:00 AM',
+        sat: '5:00 PM - 3:00 AM'
+      },
+      'chez-paree': {
+        sun: '7:00 PM - 3:00 AM',
+        mon: '7:00 PM - 3:00 AM',
+        tue: '3:00 PM - 3:00 AM',
+        wed: '3:00 PM - 3:00 AM',
+        thu: '3:00 PM - 3:00 AM',
+        fri: '3:00 PM - 3:00 AM',
+        sat: '3:00 PM - 3:00 AM'
+      },
+      'cabaret-kingdom': {
+        sun: '7:00 PM - 3:00 AM',
+        mon: '7:00 PM - 3:00 AM',
+        tue: '7:00 PM - 3:00 AM',
+        wed: '7:00 PM - 3:00 AM',
+        thu: '7:00 PM - 3:00 AM',
+        fri: '7:00 PM - 3:00 AM',
+        sat: '7:00 PM - 3:00 AM'
+      },
+      'sex-appeal': {
+        sun: '7:00 PM - 3:00 AM',
+        mon: '7:00 PM - 3:00 AM',
+        tue: '7:00 PM - 3:00 AM',
+        wed: '7:00 PM - 3:00 AM',
+        thu: '7:00 PM - 3:00 AM',
+        fri: '7:00 PM - 3:00 AM',
+        sat: '7:00 PM - 3:00 AM'
+      },
+      'la-banquise': {
+        sun: 'Open 24 hours',
+        mon: 'Open 24 hours',
+        tue: 'Open 24 hours',
+        wed: 'Open 24 hours',
+        thu: 'Open 24 hours',
+        fri: 'Open 24 hours',
+        sat: 'Open 24 hours'
+      },
+      'dunns-famous': {
+        sun: '11:00 AM - 5:00 AM',
+        mon: '11:00 AM - 5:00 AM',
+        tue: '11:00 AM - 5:00 AM',
+        wed: '11:00 AM - 5:00 AM',
+        thu: '11:00 AM - 5:00 AM',
+        fri: '11:00 AM - 5:00 AM',
+        sat: '11:00 AM - 5:00 AM'
+      },
+      'fairmount-bagel': {
+        sun: 'Open 24 hours',
+        mon: 'Open 24 hours',
+        tue: 'Open 24 hours',
+        wed: 'Open 24 hours',
+        thu: 'Open 24 hours',
+        fri: 'Open 24 hours',
+        sat: 'Open 24 hours'
+      },
+      'miami-deli': {
+        sun: 'Open 24 hours',
+        mon: 'Open 24 hours',
+        tue: 'Open 24 hours',
+        wed: 'Open 24 hours',
+        thu: 'Open 24 hours',
+        fri: 'Open 24 hours',
+        sat: 'Open 24 hours'
+      },
+      'olive-et-gourmando': {
+        sun: '8:00 AM - 6:00 PM',
+        mon: '8:00 AM - 5:00 PM',
+        tue: '8:00 AM - 5:00 PM',
+        wed: '8:00 AM - 5:00 PM',
+        thu: '8:00 AM - 5:00 PM',
+        fri: '8:00 AM - 6:00 PM',
+        sat: '8:00 AM - 6:00 PM'
+      },
+      'eggspectation-desjardins': {
+        sun: '7:00 AM - 4:00 PM',
+        mon: '7:00 AM - 4:00 PM',
+        tue: '7:00 AM - 4:00 PM',
+        wed: '7:00 AM - 4:00 PM',
+        thu: '7:00 AM - 8:00 PM',
+        fri: '7:00 AM - 8:00 PM',
+        sat: '7:00 AM - 8:00 PM'
+      },
+      'dobe-andy': {
+        sun: '11:00 AM - 9:00 PM',
+        mon: '11:00 AM - 8:00 PM',
+        tue: '11:00 AM - 8:00 PM',
+        wed: '11:00 AM - 8:00 PM',
+        thu: '11:00 AM - 8:00 PM',
+        fri: '11:00 AM - 10:00 PM',
+        sat: '11:00 AM - 10:00 PM'
+      },
+      'hoang-oanh': {
+        sun: '9:30 AM - 6:30 PM',
+        mon: '9:30 AM - 6:30 PM',
+        tue: '9:30 AM - 6:30 PM',
+        wed: '9:30 AM - 6:30 PM',
+        thu: '9:30 AM - 6:30 PM',
+        fri: '9:30 AM - 6:30 PM',
+        sat: '9:30 AM - 6:30 PM'
+      },
+      lalis: {
+        sun: 'Closed',
+        mon: '11:00 AM - 9:00 PM',
+        tue: '11:00 AM - 9:00 PM',
+        wed: '11:00 AM - 9:00 PM',
+        thu: '11:00 AM - 9:00 PM',
+        fri: '11:00 AM - 3:00 AM',
+        sat: '12:00 PM - 3:00 AM'
+      },
+      'deville-dinerbar': {
+        sun: '11:00 AM - 12:00 AM',
+        mon: '4:00 PM - 12:00 AM',
+        tue: '4:00 PM - 12:00 AM',
+        wed: '4:00 PM - 12:00 AM',
+        thu: '4:00 PM - 12:00 AM',
+        fri: '4:00 PM - 1:00 AM',
+        sat: '11:00 AM - 1:00 AM'
+      },
+      mono: {
+        sun: '12:30 PM - 7:00 PM',
+        mon: '11:30 AM - 8:00 PM',
+        tue: '11:30 AM - 9:00 PM',
+        wed: '11:30 AM - 9:00 PM',
+        thu: '11:30 AM - 9:00 PM',
+        fri: '11:30 AM - 9:00 PM',
+        sat: '12:00 PM - 7:30 PM'
+      },
+      schwartzs: {
+        sun: '10:00 AM - 11:00 PM',
+        mon: '10:00 AM - 11:00 PM',
+        tue: '10:00 AM - 11:00 PM',
+        wed: '10:00 AM - 11:00 PM',
+        thu: '10:00 AM - 11:00 PM',
+        fri: '10:00 AM - 12:00 AM',
+        sat: '10:00 AM - 12:00 AM'
+      },
+      'sqdc-crescent': {
+        sun: '10:00 AM - 5:00 PM',
+        mon: 'Closed',
+        tue: '10:00 AM - 9:00 PM',
+        wed: '10:00 AM - 9:00 PM',
+        thu: '10:00 AM - 9:00 PM',
+        fri: '10:00 AM - 9:00 PM',
+        sat: '10:00 AM - 5:00 PM'
+      },
+      'sqdc-village': {
+        sun: '10:00 AM - 5:00 PM',
+        mon: 'Closed',
+        tue: '10:00 AM - 9:00 PM',
+        wed: '10:00 AM - 9:00 PM',
+        thu: '10:00 AM - 9:00 PM',
+        fri: '10:00 AM - 9:00 PM',
+        sat: '10:00 AM - 5:00 PM'
+      }
+    };
+
+    const hotelSpot = spots.find((spot) => spot.id === 'hotel');
+    const counts = spots.reduce((acc, spot) => {
+      acc[spot.category] = (acc[spot.category] || 0) + 1;
+      return acc;
+    }, {});
+    const weekDays = [
+      { key: 'sun', label: 'Sun' },
+      { key: 'mon', label: 'Mon' },
+      { key: 'tue', label: 'Tue' },
+      { key: 'wed', label: 'Wed' },
+      { key: 'thu', label: 'Thu' },
+      { key: 'fri', label: 'Fri' },
+      { key: 'sat', label: 'Sat' }
+    ];
+    const weekDayIndex = Object.fromEntries(weekDays.map((day, index) => [day.key, index]));
+
+    function prepareMetroData(rawMetroData) {
+      if (!rawMetroData || typeof proj4 !== 'function') {
+        return null;
+      }
+
+      const projectedToWgs84 = proj4(rawMetroData.projection, 'WGS84');
+      const transformPoint = (point) => {
+        const [lng, lat] = projectedToWgs84.forward(point);
+        return [Number(lat.toFixed(6)), Number(lng.toFixed(6))];
+      };
+
+      return {
+        routes: rawMetroData.routes.map((route) => ({
+          ...route,
+          segments: route.segments.map((segment) => segment.map(transformPoint))
+        })),
+        stations: rawMetroData.stations.map((station) => {
+          const [lat, lng] = transformPoint([station.x, station.y]);
+          return {
+            ...station,
+            lat,
+            lng
+          };
+        })
+      };
+    }
+
+    const metroData = prepareMetroData(window.METRO_DATA);
+    const metroRouteMap = metroData ? Object.fromEntries(metroData.routes.map((route) => [route.id, route])) : {};
+    const metroCount = metroData ? metroData.stations.length : 0;
+    let metroStatusByLineId = {};
+    let metroStatusUpdatedAt = null;
+
+    const activeCategories = new Set(Object.keys(categories));
+    const spotLayers = new Map();
+    const metroLayer = L.layerGroup();
+    let selectedSpotId = hotelSpot.id;
+    let metroVisible = Boolean(metroData);
+    let userMarker = null;
+    let userHalo = null;
+    let wasMobile = null;
+
+    const tripPanel = document.getElementById('tripPanel');
+    const panelScroll = document.querySelector('.panel-scroll');
+    const sidebarTools = document.getElementById('sidebarTools');
+    const spotSearchInput = document.getElementById('spotSearch');
+    const categoryTabsEl = document.getElementById('categoryTabs');
+    const spotListEl = document.getElementById('spotList');
+    const panelFab = document.getElementById('panelFab');
+    const locateFab = document.getElementById('locateFab');
+    const filtersBtn = document.getElementById('filtersBtn');
+    const legendBtn = document.getElementById('legendBtn');
+    const themeBtn = document.getElementById('themeBtn');
+    const mapTools = document.getElementById('mapTools');
+    const mobileFiltersEl = document.getElementById('mobileFilters');
+    const mobileLegendEl = document.getElementById('mobileLegend');
+    const weatherPill = document.getElementById('weatherPill');
+    const weatherIconEl = document.getElementById('weatherIcon');
+    const weatherTempEl = document.getElementById('weatherTemp');
+    const metroLivePill = document.getElementById('metroLivePill');
+    const metroLiveText = document.getElementById('metroLiveText');
+    const showAllBtn = document.getElementById('showAllBtn');
+    const tonightModeBtn = document.getElementById('tonightModeBtn');
+    const hotelBtn = document.getElementById('hotelBtn');
+    let activeListCategory = 'all';
+    let searchQuery = '';
+    const collapsedCategories = new Set();
+    let hasAutoHiddenPanel = false;
+    const tonightCategories = ['hotel', 'food', 'bars', 'nightlife'];
+    const tonightFoodSpotIds = new Set(['la-banquise', 'dunns-famous', 'fairmount-bagel', 'miami-deli']);
+    let tonightMode = false;
+    let tonightModeBackup = null;
+
+    const map = L.map('map', {
+      zoomControl: false,
+      minZoom: 11,
+      maxZoom: 18,
+      preferCanvas: true
+    });
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+
+    map.createPane('areas');
+    map.getPane('areas').style.zIndex = 330;
+
+    const baseLayerOptions = {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 20
+    };
+    const baseLayers = {
+      light: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', baseLayerOptions),
+      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', baseLayerOptions)
+    };
+    let themeMode = (() => {
+      try {
+        return window.localStorage.getItem('montreal-map-theme') === 'dark' ? 'dark' : 'light';
+      } catch (error) {
+        return 'light';
+      }
+    })();
+
+    function applyTheme(mode) {
+      const nextMode = mode === 'dark' ? 'dark' : 'light';
+      const nextLayer = baseLayers[nextMode];
+      const currentLayer = baseLayers[themeMode];
+
+      if (currentLayer && map.hasLayer(currentLayer)) {
+        map.removeLayer(currentLayer);
+      }
+
+      if (!map.hasLayer(nextLayer)) {
+        nextLayer.addTo(map);
+      }
+
+      themeMode = nextMode;
+      document.body.classList.toggle('is-dark-map', themeMode === 'dark');
+      themeBtn.classList.toggle('is-active', themeMode === 'dark');
+      themeBtn.setAttribute('aria-pressed', String(themeMode === 'dark'));
+      themeBtn.setAttribute('aria-label', themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+      themeBtn.textContent = themeMode === 'dark' ? '☀' : '☾';
+
+      try {
+        window.localStorage.setItem('montreal-map-theme', themeMode);
+      } catch (error) {
+        // Ignore storage failures in private browsing or locked-down environments.
+      }
+
+      renderMetroOverlay();
+      setMetroVisibility(metroVisible);
+    }
+
+    applyTheme(themeMode);
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function categoryLabelMarkup(category) {
+      return (
+        '<span class="category-inline">' +
+          '<span class="category-icon">' + category.icon + '</span>' +
+          '<span>' + escapeHtml(category.label) + '</span>' +
+        '</span>'
+      );
+    }
+
+    function modeLabelMarkup(icon, label) {
+      return (
+        '<span class="category-inline">' +
+          '<span class="category-icon is-mode">' + icon + '</span>' +
+          '<span>' + escapeHtml(label) + '</span>' +
+        '</span>'
+      );
+    }
+
+    function createMarkerIcon(categoryKey) {
+      const category = categories[categoryKey];
+      return L.divIcon({
+        className: '',
+        html:
+          '<div class="category-marker" style="--marker:' + category.color + ';">' +
+          category.icon +
+          '</div>',
+        iconSize: [34, 46],
+        iconAnchor: [17, 42],
+        popupAnchor: [0, -30]
+      });
+    }
+
+    function directionsUrl(spot) {
+      return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(spot.directionsQuery);
+    }
+
+    function scheduleForSpot(spot) {
+      return hoursBySpotId[spot.id] || null;
+    }
+
+    function montrealNowParts() {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Toronto',
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: false
+      });
+      const parts = Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+      const weekdayMap = {
+        Sun: 'sun',
+        Mon: 'mon',
+        Tue: 'tue',
+        Wed: 'wed',
+        Thu: 'thu',
+        Fri: 'fri',
+        Sat: 'sat'
+      };
+
+      return {
+        dayKey: weekdayMap[parts.weekday],
+        minutes: Number(parts.hour) * 60 + Number(parts.minute)
+      };
+    }
+
+    function parseTimeLabel(label) {
+      const [timePart, meridiem] = label.split(' ');
+      let [hours, minutes] = timePart.split(':').map(Number);
+
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12;
+      }
+
+      if (meridiem === 'AM' && hours === 12) {
+        hours = 0;
+      }
+
+      return hours * 60 + minutes;
+    }
+
+    function parseHoursEntry(entry) {
+      if (!entry || entry === 'Closed') {
+        return { type: 'closed' };
+      }
+
+      if (entry === 'Open 24 hours') {
+        return { type: 'all-day' };
+      }
+
+      const [startLabel, endLabel] = entry.split(' - ');
+      const start = parseTimeLabel(startLabel);
+      const end = parseTimeLabel(endLabel);
+
+      return {
+        type: 'range',
+        start,
+        end,
+        overnight: end <= start
+      };
+    }
+
+    function todayHoursStatus(spot) {
+      const schedule = scheduleForSpot(spot);
+      if (!schedule) {
+        return null;
+      }
+
+      const now = montrealNowParts();
+      const todayIndex = weekDayIndex[now.dayKey];
+      const prevIndex = (todayIndex + 6) % 7;
+      const todayKey = weekDays[todayIndex].key;
+      const prevKey = weekDays[prevIndex].key;
+      const todayEntry = schedule[todayKey] || 'Closed';
+      const prevEntry = schedule[prevKey] || 'Closed';
+      const todayParsed = parseHoursEntry(todayEntry);
+      const prevParsed = parseHoursEntry(prevEntry);
+
+      let isOpen = false;
+      let untilLabel = '';
+
+      if (prevParsed.type === 'range' && prevParsed.overnight && now.minutes < prevParsed.end) {
+        isOpen = true;
+        untilLabel = prevEntry.split(' - ')[1];
+      } else if (todayParsed.type === 'all-day') {
+        isOpen = true;
+      } else if (todayParsed.type === 'range') {
+        if (todayParsed.overnight) {
+          if (now.minutes >= todayParsed.start) {
+            isOpen = true;
+            untilLabel = todayEntry.split(' - ')[1];
+          }
+        } else if (now.minutes >= todayParsed.start && now.minutes < todayParsed.end) {
+          isOpen = true;
+          untilLabel = todayEntry.split(' - ')[1];
+        }
+      }
+
+      return {
+        isOpen,
+        statusLabel: isOpen ? 'Open now' : 'Closed now',
+        detailLabel: isOpen
+          ? (todayEntry === 'Open 24 hours' ? '24 hours today' : 'Until ' + untilLabel)
+          : (todayEntry === 'Closed' ? 'Closed today' : 'Today: ' + todayEntry),
+        todayLabel: weekDays[todayIndex].label + ' ' + todayEntry,
+        todayEntry,
+        todayKey,
+        schedule
+      };
+    }
+
+    function popupHoursMarkup(spot) {
+      const hoursStatus = todayHoursStatus(spot);
+      if (!hoursStatus) {
+        return '';
+      }
+
+      return (
+        '<div class="popup-hours">' +
+          '<div class="popup-hours-topline">' +
+            '<span class="popup-hours-caption">Today</span>' +
+            '<span class="hours-status-pill ' + (hoursStatus.isOpen ? 'is-open' : 'is-closed') + '">' + hoursStatus.statusLabel + '</span>' +
+            '<span class="popup-note">' + escapeHtml(hoursStatus.detailLabel) + '</span>' +
+          '</div>' +
+          '<div class="popup-hours-today"><span class="hours-today">' + escapeHtml(hoursStatus.todayLabel) + '</span></div>' +
+        '</div>'
+      );
+    }
+
+    function listHoursMarkup(spot) {
+      const hoursStatus = todayHoursStatus(spot);
+      if (!hoursStatus) {
+        return '';
+      }
+
+      return (
+        '<div class="spot-hours-inline">' +
+          '<span class="hours-status-pill ' + (hoursStatus.isOpen ? 'is-open' : 'is-closed') + '">' + hoursStatus.statusLabel + '</span>' +
+          '<span><span class="hours-today">Hours:</span> ' + escapeHtml(hoursStatus.detailLabel) + '</span>' +
+        '</div>'
+      );
+    }
+
+    function weatherDisplay(code, isDay) {
+      if (code === 0) {
+        return { icon: isDay ? '☀️' : '🌙', label: isDay ? 'Clear' : 'Clear night' };
+      }
+
+      if ([1, 2].includes(code)) {
+        return { icon: isDay ? '⛅' : '🌙', label: 'Partly cloudy' };
+      }
+
+      if (code === 3) {
+        return { icon: '☁️', label: 'Cloudy' };
+      }
+
+      if ([45, 48].includes(code)) {
+        return { icon: '🌫️', label: 'Fog' };
+      }
+
+      if ([51, 53, 55, 56, 57].includes(code)) {
+        return { icon: '🌦️', label: 'Drizzle' };
+      }
+
+      if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+        return { icon: '🌧️', label: 'Rain' };
+      }
+
+      if ([71, 73, 75, 77, 85, 86].includes(code)) {
+        return { icon: '🌨️', label: 'Snow' };
+      }
+
+      if ([95, 96, 99].includes(code)) {
+        return { icon: '⛈️', label: 'Storm' };
+      }
+
+      return { icon: '🌤️', label: 'Weather' };
+    }
+
+    function setMetroLiveIndicator(state, label) {
+      metroLivePill.classList.remove('is-live', 'is-down');
+      if (state === 'live') {
+        metroLivePill.classList.add('is-live');
+      } else if (state === 'down') {
+        metroLivePill.classList.add('is-down');
+      }
+
+      metroLiveText.textContent = label;
+      metroLivePill.setAttribute('aria-label', label);
+    }
+
+    async function updateWeather() {
+      const weatherUrl =
+        'https://api.open-meteo.com/v1/forecast?' +
+        'latitude=' + encodeURIComponent(hotelSpot.lat) +
+        '&longitude=' + encodeURIComponent(hotelSpot.lng) +
+        '&current=temperature_2m,weather_code,is_day' +
+        '&temperature_unit=fahrenheit' +
+        '&timezone=America%2FToronto';
+
+      try {
+        const response = await fetch(weatherUrl, { headers: { Accept: 'application/json' } });
+        if (!response.ok) {
+          throw new Error('Weather request failed');
+        }
+
+        const payload = await response.json();
+        const current = payload.current;
+        if (!current || typeof current.temperature_2m !== 'number') {
+          throw new Error('Missing weather payload');
+        }
+
+        const display = weatherDisplay(current.weather_code, current.is_day === 1);
+        weatherIconEl.textContent = display.icon;
+        weatherTempEl.textContent = Math.round(current.temperature_2m) + '°F';
+        weatherPill.setAttribute('aria-label', 'Current Montreal weather: ' + display.label + ', ' + Math.round(current.temperature_2m) + ' degrees Fahrenheit');
+      } catch (error) {
+        weatherIconEl.textContent = '🌡️';
+        weatherTempEl.textContent = '--°F';
+        weatherPill.setAttribute('aria-label', 'Current Montreal weather unavailable');
+      }
+    }
+
+    function spotMatchesTonightMode(spot) {
+      if (!tonightMode) {
+        return true;
+      }
+
+      if (spot.category !== 'food') {
+        return true;
+      }
+
+      return tonightFoodSpotIds.has(spot.id);
+    }
+
+    function isSpotVisible(spot) {
+      return activeCategories.has(spot.category) && spotMatchesTonightMode(spot);
+    }
+
+    function distanceFromHotel(spot) {
+      if (spot.id === hotelSpot.id) {
+        return 'Basecamp';
+      }
+
+      const toRad = (degrees) => degrees * Math.PI / 180;
+      const earthRadiusKm = 6371;
+      const dLat = toRad(spot.lat - hotelSpot.lat);
+      const dLng = toRad(spot.lng - hotelSpot.lng);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(hotelSpot.lat)) *
+          Math.cos(toRad(spot.lat)) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = earthRadiusKm * c;
+      const distanceMiles = distance * 0.621371;
+      return distanceMiles < 0.1 ? Math.round(distanceMiles * 5280) + ' ft from hotel' : distanceMiles.toFixed(1) + ' mi from hotel';
+    }
+
+    function travelTimesForSpot(spot) {
+      return travelTimesBySpotId[spot.id] || { walk: '15 min', metro: '8 min' };
+    }
+
+    function normalizeText(value) {
+      return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    }
+
+    function filteredListSpots() {
+      const query = normalizeText(searchQuery.trim());
+      return visibleSpots().filter((spot) => {
+        if (activeListCategory !== 'all' && spot.category !== activeListCategory) {
+          return false;
+        }
+
+        if (!query) {
+          return true;
+        }
+
+        return normalizeText(spot.name).includes(query);
+      });
+    }
+
+    function listGroups() {
+      const filtered = filteredListSpots();
+      return Object.keys(categories).map((categoryKey) => ({
+        categoryKey,
+        spots: filtered.filter((spot) => spot.category === categoryKey)
+      })).filter((group) => group.spots.length > 0);
+    }
+
+    function popupMarkup(spot) {
+      const category = categories[spot.category];
+      const travelTimes = travelTimesForSpot(spot);
+      return (
+        '<div class="popup-card" style="--badge:' + category.color + ';">' +
+          '<div class="popup-kicker">' + category.label + '</div>' +
+          '<h3>' + escapeHtml(spot.name) + '</h3>' +
+          '<p>' + escapeHtml(spot.description) + '</p>' +
+          '<div class="popup-badges">' +
+            '<span class="travel-pill">🚶 ' + escapeHtml(travelTimes.walk) + '</span>' +
+            '<span class="travel-pill">🚇 ' + escapeHtml(travelTimes.metro) + '</span>' +
+            '<span class="travel-pill is-distance">' + escapeHtml(distanceFromHotel(spot)) + '</span>' +
+          '</div>' +
+          popupHoursMarkup(spot) +
+          '<a class="popup-link" href="' + directionsUrl(spot) + '" target="_blank" rel="noreferrer">Open directions</a>' +
+        '</div>'
+      );
+    }
+
+    function metroLineNames(routeIds) {
+      return routeIds.map((routeId) => metroRouteMap[routeId]?.label || ('Line ' + routeId)).join(' / ');
+    }
+
+    function metroStatusInfo(routeId) {
+      return metroStatusByLineId[String(routeId)] || {
+        lineId: String(routeId),
+        lineName: metroRouteMap[routeId]?.label || ('Line ' + routeId),
+        status: 'normal',
+        message: ''
+      };
+    }
+
+    function metroSeverityRank(status) {
+      return { normal: 0, advisory: 1, disrupted: 2, major: 3 }[status] || 0;
+    }
+
+    function metroStatusStyle(status, fallbackColor) {
+      if (status === 'major') {
+        return { color: '#ff5260', weight: window.innerWidth <= 820 ? 5 : 6, opacity: 0.98, dashArray: null };
+      }
+
+      if (status === 'disrupted') {
+        return { color: '#ffb000', weight: window.innerWidth <= 820 ? 5 : 6, opacity: 0.98, dashArray: '10 8' };
+      }
+
+      if (status === 'advisory') {
+        return { color: '#4d7cff', weight: window.innerWidth <= 820 ? 4 : 5, opacity: 0.95, dashArray: '6 10' };
+      }
+
+      return { color: fallbackColor, weight: window.innerWidth <= 820 ? 4 : 5, opacity: 0.9, dashArray: null };
+    }
+
+    function metroServiceSummary(routeIds) {
+      const liveStatuses = routeIds.map(metroStatusInfo).sort((a, b) => metroSeverityRank(b.status) - metroSeverityRank(a.status));
+      const worst = liveStatuses[0];
+      if (!worst || worst.status === 'normal') {
+        return '';
+      }
+
+      return (
+        '<div class="popup-service-note">' +
+          '<strong>Live service:</strong> ' + escapeHtml(worst.lineName) + ' ' + escapeHtml(worst.status) +
+          (worst.message ? ' - ' + escapeHtml(worst.message) : '') +
+        '</div>'
+      );
+    }
+
+    function metroPopupMarkup(station) {
+      const badgeColor = station.routes.length === 1 ? metroRouteMap[station.routes[0]].color : '#162238';
+      return (
+        '<div class="popup-card" style="--badge:' + badgeColor + ';">' +
+          '<div class="popup-kicker">Metro station</div>' +
+          '<h3>' + escapeHtml(station.name) + '</h3>' +
+          '<p>' + escapeHtml(metroLineNames(station.routes)) + '</p>' +
+          metroServiceSummary(station.routes) +
+          '<div class="popup-note">' + (station.wheelchair ? 'Wheelchair accessible' : 'Station access varies by entrance') + '</div>' +
+          '<a class="popup-link" href="' + escapeHtml(station.url) + '" target="_blank" rel="noreferrer">Station info</a>' +
+        '</div>'
+      );
+    }
+
+    function renderMetroOverlay() {
+      if (!metroData) {
+        return;
+      }
+
+      metroLayer.clearLayers();
+      const stationFill = themeMode === 'dark' ? '#0f1829' : '#fffaf1';
+
+      metroData.routes.forEach((route) => {
+        const liveStatus = metroStatusInfo(route.id);
+        const style = metroStatusStyle(liveStatus.status, route.color);
+        route.segments.forEach((segment) => {
+        L.polyline(segment, {
+          color: style.color,
+          weight: style.weight,
+          opacity: style.opacity,
+          dashArray: style.dashArray,
+          lineCap: 'round',
+          lineJoin: 'round'
+          }).addTo(metroLayer);
+        });
+      });
+
+      metroData.stations.forEach((station) => {
+        const stationStroke = station.routes.length === 1 ? metroRouteMap[station.routes[0]].color : '#162238';
+        L.circleMarker([station.lat, station.lng], {
+          radius: window.innerWidth <= 820 ? 4.5 : 5.5,
+          color: stationStroke,
+          weight: 2,
+          fillColor: stationFill,
+          fillOpacity: 0.98,
+          opacity: 1
+        })
+          .bindPopup(metroPopupMarkup(station), {
+            closeButton: true,
+            closeOnClick: true,
+            autoClose: true
+          })
+          .addTo(metroLayer);
+      });
+    }
+
+    function setMetroVisibility(visible) {
+      metroVisible = visible && Boolean(metroData);
+      if (!metroData) {
+        return;
+      }
+
+      if (metroVisible && !map.hasLayer(metroLayer)) {
+        metroLayer.addTo(map);
+      }
+
+      if (!metroVisible && map.hasLayer(metroLayer)) {
+        map.removeLayer(metroLayer);
+      }
+    }
+
+    function focusSpot(spotId) {
+      const entry = spotLayers.get(spotId);
+      if (!entry) {
+        return;
+      }
+
+      selectedSpotId = spotId;
+      collapsedCategories.delete(entry.spot.category);
+      if (activeListCategory !== 'all' && activeListCategory !== entry.spot.category) {
+        activeListCategory = entry.spot.category;
+        renderCategoryTabs();
+      }
+      map.closePopup();
+
+      const openPopup = () => {
+        entry.marker.openPopup();
+      };
+
+      if (entry.area) {
+        map.once('moveend', openPopup);
+        map.flyToBounds(entry.area.getBounds(), {
+          paddingTopLeft: getFitPadding().paddingTopLeft,
+          paddingBottomRight: getFitPadding().paddingBottomRight,
+          duration: 0.8
+        });
+      } else {
+        map.once('moveend', openPopup);
+        map.flyTo([entry.spot.lat, entry.spot.lng], 15, { duration: 0.8 });
+      }
+      renderSpotList();
+
+      if (window.innerWidth <= 820) {
+        tripPanel.classList.add('is-collapsed');
+        syncPanelToggleLabel();
+      }
+    }
+
+    function setLayerVisibility(entry, visible) {
+      const hasMarker = map.hasLayer(entry.marker);
+      if (visible && !hasMarker) {
+        entry.marker.addTo(map);
+      }
+      if (!visible && hasMarker) {
+        map.removeLayer(entry.marker);
+      }
+
+      if (entry.area) {
+        const hasArea = map.hasLayer(entry.area);
+        if (visible && !hasArea) {
+          entry.area.addTo(map);
+        }
+        if (!visible && hasArea) {
+          map.removeLayer(entry.area);
+        }
+      }
+    }
+
+    function visibleSpots() {
+      return spots.filter(isSpotVisible);
+    }
+
+    function getFitPadding() {
+      if (window.innerWidth <= 820) {
+        return {
+          paddingTopLeft: [20, 72],
+          paddingBottomRight: [20, 250]
+        };
+      }
+
+      return {
+        paddingTopLeft: [430, 70],
+        paddingBottomRight: [70, 70]
+      };
+    }
+
+    function fitVisibleSpots() {
+      const visible = visibleSpots();
+      if (!visible.length) {
+        return;
+      }
+
+      if (visible.length === 1) {
+        map.flyTo([visible[0].lat, visible[0].lng], 15, { duration: 0.8 });
+        return;
+      }
+
+      const bounds = L.latLngBounds(visible.map((spot) => [spot.lat, spot.lng]));
+      const padding = getFitPadding();
+      map.flyToBounds(bounds, {
+        paddingTopLeft: padding.paddingTopLeft,
+        paddingBottomRight: padding.paddingBottomRight,
+        duration: 0.8
+      });
+    }
+
+    function updateSpotLayerVisibility() {
+      spotLayers.forEach((entry) => {
+        setLayerVisibility(entry, isSpotVisible(entry.spot));
+      });
+    }
+
+    function syncTonightModeUi() {
+      document.body.classList.toggle('is-tonight', tonightMode);
+      tonightModeBtn.classList.toggle('is-inactive', !tonightMode);
+      tonightModeBtn.setAttribute('aria-pressed', String(tonightMode));
+      tonightModeBtn.textContent = tonightMode ? 'Tonight on' : 'Tonight mode';
+    }
+
+    function refreshVisibleState({ fit = true } = {}) {
+      if (!visibleSpots().some((spot) => spot.id === selectedSpotId)) {
+        selectedSpotId = hotelSpot.id;
+      }
+      updateSpotLayerVisibility();
+      renderFilters();
+      renderLegend();
+      renderCategoryTabs();
+      renderSpotList();
+      syncTonightModeUi();
+      if (fit) {
+        fitVisibleSpots();
+      }
+    }
+
+    function disableTonightMode({ restore = true, fit = false } = {}) {
+      if (!tonightMode) {
+        return;
+      }
+
+      tonightMode = false;
+      if (restore && tonightModeBackup) {
+        activeCategories.clear();
+        tonightModeBackup.categories.forEach((categoryKey) => activeCategories.add(categoryKey));
+        activeListCategory = tonightModeBackup.activeListCategory;
+        setMetroVisibility(tonightModeBackup.metroVisible);
+      }
+      tonightModeBackup = null;
+      refreshVisibleState({ fit });
+    }
+
+    function enableTonightMode() {
+      if (!tonightMode) {
+        tonightModeBackup = {
+          categories: [...activeCategories],
+          metroVisible,
+          activeListCategory
+        };
+      }
+
+      tonightMode = true;
+      activeCategories.clear();
+      tonightCategories.forEach((categoryKey) => activeCategories.add(categoryKey));
+      activeListCategory = 'all';
+      setMetroVisibility(Boolean(metroData));
+      refreshVisibleState({ fit: true });
+    }
+
+    function toggleTonightMode() {
+      if (tonightMode) {
+        disableTonightMode({ restore: true, fit: true });
+      } else {
+        enableTonightMode();
+      }
+    }
+
+    function toggleCategory(categoryKey) {
+      if (tonightMode) {
+        disableTonightMode({ restore: false, fit: false });
+      }
+
+      if (activeCategories.has(categoryKey)) {
+        activeCategories.delete(categoryKey);
+      } else {
+        activeCategories.add(categoryKey);
+      }
+
+      if (!activeCategories.size) {
+        activeCategories.add(categoryKey);
+      }
+
+      updateSpotLayerVisibility();
+
+      if (!activeCategories.has(spots.find((spot) => spot.id === selectedSpotId)?.category)) {
+        selectedSpotId = hotelSpot.id;
+      }
+
+      refreshVisibleState({ fit: true });
+    }
+
+    function toggleMetroOverlay() {
+      if (tonightMode) {
+        disableTonightMode({ restore: false, fit: false });
+      }
+      setMetroVisibility(!metroVisible);
+      refreshVisibleState({ fit: false });
+    }
+
+    function bindFilterButtons(container) {
+      container.querySelectorAll('[data-category]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleCategory(button.dataset.category);
+          if (container === mobileFiltersEl) {
+            mapTools.classList.add('is-filters-open');
+            filtersBtn.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+
+      container.querySelectorAll('[data-mode="tonight"]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleTonightMode();
+          if (container === mobileFiltersEl) {
+            mapTools.classList.add('is-filters-open');
+            filtersBtn.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+
+      container.querySelectorAll('[data-overlay="metro"]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleMetroOverlay();
+          if (container === mobileFiltersEl) {
+            mapTools.classList.add('is-filters-open');
+            filtersBtn.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+    }
+
+    function renderCategoryTabs() {
+      const visibleCounts = Object.keys(categories).reduce((acc, categoryKey) => {
+        acc[categoryKey] = visibleSpots().filter((spot) => spot.category === categoryKey).length;
+        return acc;
+      }, {});
+
+      const totalVisibleCount = Object.values(visibleCounts).reduce((sum, count) => sum + count, 0);
+
+      const tabsMarkup = [
+        '<button class="category-tab ' + (activeListCategory === 'all' ? 'is-active' : '') + '" type="button" data-list-category="all">All (' + totalVisibleCount + ')</button>'
+      ].concat(
+        Object.entries(categories).map(([key, category]) => {
+          const isActive = activeListCategory === key;
+          const isMuted = visibleCounts[key] === 0;
+          return (
+            '<button class="category-tab ' + (isActive ? 'is-active ' : '') + (isMuted ? 'is-muted' : '') + '" type="button" data-list-category="' + key + '">' +
+              categoryLabelMarkup(category) + ' (' + visibleCounts[key] + ')' +
+            '</button>'
+          );
+        })
+      ).join('');
+
+      categoryTabsEl.innerHTML = tabsMarkup;
+      categoryTabsEl.querySelectorAll('[data-list-category]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextCategory = button.dataset.listCategory;
+          activeListCategory = nextCategory;
+          if (nextCategory !== 'all') {
+            collapsedCategories.delete(nextCategory);
+          }
+          renderCategoryTabs();
+          renderSpotList();
+          panelScroll.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      });
+    }
+
+    function renderFilters() {
+      const tonightMarkup = (
+        '<button class="filter-chip is-tonight-preset ' + (tonightMode ? '' : 'is-inactive') + '" type="button" data-mode="tonight" aria-pressed="' + String(tonightMode) + '">' +
+          modeLabelMarkup('🌃', 'Tonight mode') +
+          '<span class="chip-count">' + (tonightMode ? 'ON' : 'PM') + '</span>' +
+        '</button>'
+      );
+
+      const categoryMarkup = Object.entries(categories).map(([key, category]) => {
+        const active = activeCategories.has(key);
+        return (
+          '<button class="filter-chip ' + (active ? '' : 'is-off') + '" type="button" data-category="' + key + '" style="--swatch:' + category.color + ';" aria-pressed="' + String(active) + '">' +
+            '<span class="chip-swatch"></span>' +
+            categoryLabelMarkup(category) +
+            '<span class="chip-count">' + (counts[key] || 0) + '</span>' +
+          '</button>'
+        );
+      }).join('');
+
+      const metroMarkup = metroData ? (
+        '<button class="filter-chip ' + (metroVisible ? '' : 'is-off') + '" type="button" data-overlay="metro" aria-pressed="' + String(metroVisible) + '">' +
+          '<span class="chip-swatch is-metro"></span>' +
+          '<span>Metro</span>' +
+          '<span class="chip-count">' + metroCount + '</span>' +
+        '</button>'
+      ) : '';
+
+      const filtersMarkup = tonightMarkup + categoryMarkup + metroMarkup;
+
+      mobileFiltersEl.innerHTML = filtersMarkup;
+      bindFilterButtons(mobileFiltersEl);
+    }
+
+    function renderLegend() {
+      const mobileSpotLegend = Object.values(categories).map((category) => {
+        return (
+          '<div class="legend-popover-item">' +
+            '<span class="legend-swatch" style="--swatch:' + category.color + ';"></span>' +
+            categoryLabelMarkup(category) +
+          '</div>'
+        );
+      }).join('');
+
+      const mobileMetroLegend = metroData ? metroData.routes.map((route) => {
+        const liveStatus = metroStatusInfo(route.id);
+        return (
+          '<div class="legend-popover-item is-metro-route">' +
+            '<span class="legend-swatch" style="--swatch:' + route.color + ';"></span>' +
+            '<span>' + route.label + '</span>' +
+          '</div>'
+        );
+      }).join('') : '';
+
+      const metroLiveMarkup = metroData ? (
+        '<div class="legend-popover-section">' +
+          '<div class="popover-title">Live Metro Status</div>' +
+          '<div class="metro-live-list">' +
+            metroData.routes.map((route) => {
+              const liveStatus = metroStatusInfo(route.id);
+              return (
+                '<div class="metro-live-item">' +
+                  '<span class="metro-live-line">' +
+                    '<span class="metro-line-dot" style="--line-color:' + route.color + ';"></span>' +
+                    '<span>' + route.label + '</span>' +
+                  '</span>' +
+                  '<span class="metro-live-status is-' + liveStatus.status + '">' + escapeHtml(liveStatus.status) + '</span>' +
+                '</div>'
+              );
+            }).join('') +
+          '</div>' +
+          '<div class="metro-live-note">' +
+            (metroStatusUpdatedAt ? 'Updated ' + escapeHtml(metroStatusUpdatedAt) : 'Live status from STM when available.') +
+          '</div>' +
+        '</div>'
+      ) : '';
+
+      mobileLegendEl.innerHTML = mobileSpotLegend + mobileMetroLegend + metroLiveMarkup;
+    }
+
+    async function fetchMetroStatus() {
+      if (!metroData) {
+        setMetroLiveIndicator('down', 'STM unavailable');
+        return;
+      }
+
+      try {
+        const response = await fetch('/.netlify/functions/metro-status', {
+          headers: { Accept: 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error('Metro status request failed');
+        }
+
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          throw new Error('Unexpected metro status payload');
+        }
+
+        metroStatusByLineId = Object.fromEntries(payload.map((entry) => [String(entry.lineId), entry]));
+        metroStatusUpdatedAt = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Toronto',
+          hour: 'numeric',
+          minute: '2-digit'
+        }).format(new Date());
+        setMetroLiveIndicator('live', 'STM live');
+        renderMetroOverlay();
+        setMetroVisibility(metroVisible);
+        renderLegend();
+      } catch (error) {
+        setMetroLiveIndicator('down', 'STM unavailable');
+        // Keep the static metro overlay if the live endpoint is unavailable.
+      }
+    }
+
+    function renderSpotList() {
+      const groups = listGroups();
+      const anyVisibleSpots = visibleSpots().length > 0;
+
+      if (!anyVisibleSpots) {
+        spotListEl.innerHTML = '<div class="empty-state">Everything is filtered out right now. Turn a category back on to see spots again.</div>';
+        return;
+      }
+
+      if (!groups.length) {
+        spotListEl.innerHTML = '<div class="empty-state">No spots match that search. Try a different name or clear the category tab.</div>';
+        return;
+      }
+
+      spotListEl.innerHTML = groups.map((group) => {
+        const category = categories[group.categoryKey];
+        const isCollapsed = collapsedCategories.has(group.categoryKey);
+
+        const cardsMarkup = group.spots.map((spot) => {
+          const selectedClass = spot.id === selectedSpotId ? 'is-selected' : '';
+          const travelTimes = travelTimesForSpot(spot);
+          return (
+            '<article class="spot-card ' + selectedClass + '" data-spot-id="' + spot.id + '">' +
+              '<div class="spot-topline">' +
+                '<span class="spot-badge" style="--badge:' + category.color + ';">' + categoryLabelMarkup(category) + '</span>' +
+              '</div>' +
+              '<h3>' + escapeHtml(spot.name) + '</h3>' +
+              '<div class="spot-badges">' +
+                '<span class="travel-pill">🚶 ' + escapeHtml(travelTimes.walk) + '</span>' +
+                '<span class="travel-pill">🚇 ' + escapeHtml(travelTimes.metro) + '</span>' +
+                '<span class="travel-pill is-distance">' + escapeHtml(distanceFromHotel(spot)) + '</span>' +
+              '</div>' +
+              '<p>' + escapeHtml(spot.description) + '</p>' +
+              listHoursMarkup(spot) +
+              '<div class="spot-meta">' + escapeHtml(spot.address) + '</div>' +
+              '<div class="spot-actions">' +
+                '<button class="spot-btn" type="button" data-focus-id="' + spot.id + '">View on map</button>' +
+                '<a class="spot-link" href="' + directionsUrl(spot) + '" target="_blank" rel="noreferrer">Directions</a>' +
+              '</div>' +
+            '</article>'
+          );
+        }).join('');
+
+        return (
+          '<section class="spot-group" data-group-category="' + group.categoryKey + '">' +
+            '<button class="spot-group-header" type="button" data-toggle-group="' + group.categoryKey + '" aria-expanded="' + String(!isCollapsed) + '">' +
+              '<strong><span class="spot-group-arrow">▾</span>' + categoryLabelMarkup(category) + '</strong>' +
+              '<span class="spot-group-count">' + group.spots.length + '</span>' +
+            '</button>' +
+            '<div class="spot-group-list" ' + (isCollapsed ? 'hidden' : '') + '>' + cardsMarkup + '</div>' +
+          '</section>'
+        );
+      }).join('');
+
+      spotListEl.querySelectorAll('[data-focus-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+          focusSpot(button.dataset.focusId);
+        });
+      });
+
+      spotListEl.querySelectorAll('[data-toggle-group]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const categoryKey = button.dataset.toggleGroup;
+          if (collapsedCategories.has(categoryKey)) {
+            collapsedCategories.delete(categoryKey);
+          } else {
+            collapsedCategories.add(categoryKey);
+          }
+          renderSpotList();
+        });
+      });
+    }
+
+    function addSpotToMap(spot) {
+      const category = categories[spot.category];
+      const marker = L.marker([spot.lat, spot.lng], { icon: createMarkerIcon(spot.category) }).bindPopup(popupMarkup(spot), {
+        closeButton: true,
+        closeOnClick: true,
+        autoClose: true
+      });
+      let area = null;
+
+      if (spot.radius) {
+        area = L.circle([spot.lat, spot.lng], {
+          pane: 'areas',
+          radius: spot.radius,
+          weight: 1.5,
+          color: category.color,
+          fillColor: category.color,
+          fillOpacity: 0.12,
+          dashArray: '6 10'
+        });
+
+        area.on('click', () => {
+          focusSpot(spot.id);
+        });
+      }
+
+      marker.on('click', () => {
+        selectedSpotId = spot.id;
+        renderSpotList();
+      });
+
+      marker.addTo(map);
+      if (area) {
+        area.addTo(map);
+      }
+
+      spotLayers.set(spot.id, { spot, marker, area });
+    }
+
+    function syncPanelToggleLabel() {
+      return;
+    }
+
+    function syncPanelFabLabel() {
+      const panelVisible = !tripPanel.classList.contains('is-hidden-panel');
+      panelFab.setAttribute('aria-expanded', String(panelVisible));
+      panelFab.textContent = panelVisible ? 'Hide trip' : 'Trip';
+    }
+
+    function hidePanel() {
+      tripPanel.classList.add('is-hidden-panel');
+      tripPanel.classList.remove('is-collapsed');
+      syncPanelFabLabel();
+    }
+
+    function showPanel() {
+      tripPanel.classList.remove('is-hidden-panel');
+      tripPanel.classList.remove('is-collapsed');
+      syncPanelFabLabel();
+    }
+
+    function syncPanelState() {
+      const isMobile = window.innerWidth <= 820;
+
+      if (isMobile) {
+        if (wasMobile !== true) {
+          tripPanel.classList.add('is-collapsed');
+          tripPanel.classList.remove('is-hidden-panel');
+        }
+      } else {
+        tripPanel.classList.remove('is-collapsed');
+        mapTools.classList.remove('is-filters-open');
+        mapTools.classList.remove('is-legend-open');
+        filtersBtn.setAttribute('aria-expanded', 'false');
+        legendBtn.setAttribute('aria-expanded', 'false');
+      }
+
+      wasMobile = isMobile;
+      renderMetroOverlay();
+      setMetroVisibility(metroVisible);
+      syncPanelFabLabel();
+    }
+
+    function syncMapToolsTop() {
+      const viewportOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      const topValue = Math.max(12, Math.round(viewportOffsetTop + 12));
+      document.documentElement.style.setProperty('--map-tools-top', topValue + 'px');
+    }
+
+    spotSearchInput.addEventListener('input', (event) => {
+      searchQuery = event.target.value;
+      renderSpotList();
+    });
+
+    panelFab.addEventListener('click', () => {
+      if (tripPanel.classList.contains('is-hidden-panel')) {
+        showPanel();
+      } else if (window.innerWidth <= 820 && tripPanel.classList.contains('is-collapsed')) {
+        tripPanel.classList.remove('is-collapsed');
+        syncPanelFabLabel();
+      } else {
+        hidePanel();
+      }
+    });
+
+    filtersBtn.addEventListener('click', () => {
+      const nextState = !mapTools.classList.contains('is-filters-open');
+      mapTools.classList.remove('is-legend-open');
+      legendBtn.setAttribute('aria-expanded', 'false');
+      mapTools.classList.toggle('is-filters-open', nextState);
+      filtersBtn.setAttribute('aria-expanded', String(nextState));
+    });
+
+    legendBtn.addEventListener('click', () => {
+      const nextState = !mapTools.classList.contains('is-legend-open');
+      mapTools.classList.remove('is-filters-open');
+      filtersBtn.setAttribute('aria-expanded', 'false');
+      mapTools.classList.toggle('is-legend-open', nextState);
+      legendBtn.setAttribute('aria-expanded', String(nextState));
+    });
+
+    legendBtn.addEventListener('mouseenter', () => {
+      if (window.innerWidth > 820) {
+        mapTools.classList.remove('is-filters-open');
+        mapTools.classList.add('is-legend-open');
+      }
+    });
+
+    legendBtn.addEventListener('mouseleave', () => {
+      if (window.innerWidth > 820) {
+        mapTools.classList.remove('is-legend-open');
+        legendBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    legendBtn.addEventListener('focus', () => {
+      mapTools.classList.remove('is-filters-open');
+      mapTools.classList.add('is-legend-open');
+    });
+
+    legendBtn.addEventListener('blur', () => {
+      if (window.innerWidth > 820) {
+        mapTools.classList.remove('is-legend-open');
+        legendBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    showAllBtn.addEventListener('click', () => {
+      fitVisibleSpots();
+    });
+
+    tonightModeBtn.addEventListener('click', toggleTonightMode);
+
+    hotelBtn.addEventListener('click', () => {
+      activeCategories.add('hotel');
+      refreshVisibleState({ fit: false });
+      setLayerVisibility(spotLayers.get(hotelSpot.id), true);
+      focusSpot(hotelSpot.id);
+    });
+
+    function requestLocation() {
+      map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true });
+    }
+
+    locateFab.addEventListener('click', requestLocation);
+    themeBtn.addEventListener('click', () => {
+      applyTheme(themeMode === 'dark' ? 'light' : 'dark');
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!mapTools.contains(event.target)) {
+        mapTools.classList.remove('is-filters-open');
+        mapTools.classList.remove('is-legend-open');
+        filtersBtn.setAttribute('aria-expanded', 'false');
+        legendBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    function autoHidePanelAfterMapInteraction() {
+      if (window.innerWidth > 820 || hasAutoHiddenPanel) {
+        return;
+      }
+
+      hasAutoHiddenPanel = true;
+      hidePanel();
+    }
+
+    map.on('click', autoHidePanelAfterMapInteraction);
+    map.on('dragstart', autoHidePanelAfterMapInteraction);
+    map.on('zoomstart', autoHidePanelAfterMapInteraction);
+
+    map.on('locationfound', (event) => {
+      if (userMarker) {
+        map.removeLayer(userMarker);
+      }
+
+      if (userHalo) {
+        map.removeLayer(userHalo);
+      }
+
+      userHalo = L.circle(event.latlng, {
+        radius: event.accuracy,
+        color: '#2f9e72',
+        weight: 1,
+        fillColor: '#2f9e72',
+        fillOpacity: 0.08
+      }).addTo(map);
+
+      userMarker = L.marker(event.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: '<div class="current-user-dot"></div>',
+          iconSize: [18, 18],
+          iconAnchor: [9, 9]
+        })
+      }).addTo(map);
+
+      userMarker.bindPopup('<div class="popup-card"><div class="popup-kicker" style="--badge:#2f9e72;">Your location</div><h3>You are here</h3><p>Useful for checking what is actually close once you are out walking.</p></div>', {
+        closeButton: true,
+        closeOnClick: true,
+        autoClose: true
+      });
+      userMarker.openPopup();
+    });
+
+    map.on('locationerror', () => {
+      locateFab.textContent = '!';
+      window.setTimeout(() => {
+        locateFab.textContent = '⌖';
+      }, 2200);
+    });
+
+    spots.forEach(addSpotToMap);
+    renderMetroOverlay();
+    setMetroVisibility(metroVisible);
+    renderLegend();
+    renderFilters();
+    renderCategoryTabs();
+    renderSpotList();
+    syncTonightModeUi();
+    syncMapToolsTop();
+    syncPanelState();
+    updateWeather();
+    fetchMetroStatus();
+
+    map.setView([45.5123, -73.5728], 13);
+    window.setTimeout(() => {
+      map.invalidateSize();
+      fitVisibleSpots();
+    }, 180);
+
+    window.addEventListener('resize', () => {
+      syncMapToolsTop();
+      syncPanelState();
+      map.invalidateSize();
+    });
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', syncMapToolsTop);
+      window.visualViewport.addEventListener('scroll', syncMapToolsTop);
+    }
+
+    window.setInterval(updateWeather, 15 * 60 * 1000);
+    window.setInterval(fetchMetroStatus, 2 * 60 * 1000);
+  </script>
+</body>
+</html>
