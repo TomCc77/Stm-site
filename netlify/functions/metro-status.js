@@ -116,20 +116,21 @@ function mergeLineStatus(current, candidate) {
 
 exports.handler = async function handler() {
   const clientId = process.env.STM_CLIENT_ID || '';
+  const clientSecret = process.env.STM_CLIENT_SECRET || '';
 
-  if (!clientId) {
+  if (!clientId || !clientSecret) {
     return json(500, {
-      error: 'Missing STM_CLIENT_ID environment variable.'
+      error: 'Missing STM_CLIENT_ID or STM_CLIENT_SECRET environment variable.'
     });
   }
 
   try {
     const response = await fetch(STM_ALERTS_URL, {
       headers: {
-        'apiKey': apiKey,
-        'accept': 'application/x-protobuf'
+        'X-IBM-Client-Id': clientId,
+        'X-IBM-Client-Secret': clientSecret,
+        'Accept': 'application/x-protobuf'
       }
-
     });
 
     if (!response.ok) {
