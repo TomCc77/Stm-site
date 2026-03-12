@@ -126,11 +126,11 @@ exports.handler = async function handler() {
 
   try {
     const response = await fetch(STM_ALERTS_URL, {
-      headers: {
-        'X-IBM-Client-Id': clientId,
-        'X-IBM-Client-Secret': clientSecret,
-        'Accept': 'application/x-protobuf'
+      headers = {
+        "accept": "application/x-protobuf",
+        "apiKey": "<l78dbbf9b196234580ae8b550bd105d318>",
       }
+
     });
 
     if (!response.ok) {
