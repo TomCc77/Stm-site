@@ -126,7 +126,7 @@ exports.handler = async function handler() {
   try {
     const response = await fetch(STM_ALERTS_URL, {
       headers: {
-        'X-IBM-Client-Id': clientId
+        'apikey': clientId
       }
     });
 
