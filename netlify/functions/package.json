@@ -1,5 +1,8 @@
 {
+  "name": "metro-functions",
+  "version": "1.0.0",
   "dependencies": {
-    "gtfs-realtime-bindings": "^1.0.0"
+    "gtfs-realtime-bindings": "1.0.0",
+    "node-fetch": "2.7.0"
   }
 }
