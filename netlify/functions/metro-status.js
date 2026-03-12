@@ -1,39 +1,18 @@
-const STM_BASE_URL = 'https://api.stm.info/pub/od/i3/v2/messages/etatservice';
+const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
-const LINE_ALIASES = {
-  '1': '1',
-  green: '1',
-  verte: '1',
-  'ligne verte': '1',
-  'green line': '1',
-  '2': '2',
-  orange: '2',
-  'ligne orange': '2',
-  'orange line': '2',
-  '4': '4',
-  yellow: '4',
-  jaune: '4',
-  'ligne jaune': '4',
-  'yellow line': '4',
-  '5': '5',
-  blue: '5',
-  bleue: '5',
-  'ligne bleue': '5',
-  'blue line': '5'
-};
+const STM_ALERTS_URL = 'https://api.stm.info/pub/od/gtfs-rt/ic/v2/serviceAlerts';
 
-const LINE_INFO = {
-  '1': { lineId: '1', lineName: 'Green Line', color: '#009f4d' },
-  '2': { lineId: '2', lineName: 'Orange Line', color: '#f08a24' },
-  '4': { lineId: '4', lineName: 'Yellow Line', color: '#ffd200' },
-  '5': { lineId: '5', lineName: 'Blue Line', color: '#0079c2' }
-};
+const METRO_LINES = [
+  { lineId: 1, routeId: '1', lineName: 'Green Line', color: '009f4d' },
+  { lineId: 2, routeId: '2', lineName: 'Orange Line', color: 'f08a24' },
+  { lineId: 4, routeId: '4', lineName: 'Yellow Line', color: 'ffd200' },
+  { lineId: 5, routeId: '5', lineName: 'Blue Line', color: '0079c2' }
+];
 
 const SEVERITY_RANK = {
   normal: 0,
-  advisory: 1,
-  disrupted: 2,
-  major: 3
+  disrupted: 1,
+  major: 2
 };
 
 function json(statusCode, body) {
@@ -47,7 +26,7 @@ function json(statusCode, body) {
   };
 }
 
-function normalizeString(value) {
+function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -55,61 +34,27 @@ function normalizeString(value) {
     .trim();
 }
 
-function pickFirstString(object, keys) {
-  for (const key of keys) {
-    const value = object?.[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
+function extractTranslation(text) {
+  if (!text || !Array.isArray(text.translation)) {
+    return '';
   }
-  return '';
+
+  const english = text.translation.find((entry) => entry.language === 'en' && entry.text);
+  if (english) {
+    return english.text.trim();
+  }
+
+  const french = text.translation.find((entry) => entry.language === 'fr' && entry.text);
+  if (french) {
+    return french.text.trim();
+  }
+
+  const fallback = text.translation.find((entry) => entry.text);
+  return fallback ? fallback.text.trim() : '';
 }
 
-function flattenObjects(value, bucket = []) {
-  if (Array.isArray(value)) {
-    value.forEach((item) => flattenObjects(item, bucket));
-    return bucket;
-  }
-
-  if (value && typeof value === 'object') {
-    bucket.push(value);
-    Object.values(value).forEach((child) => flattenObjects(child, bucket));
-  }
-
-  return bucket;
-}
-
-function normalizeLineId(rawValue) {
-  const normalized = normalizeString(rawValue);
-  if (!normalized) {
-    return null;
-  }
-
-  if (LINE_ALIASES[normalized]) {
-    return LINE_ALIASES[normalized];
-  }
-
-  const digitMatch = normalized.match(/\b([1245])\b/);
-  if (digitMatch) {
-    return digitMatch[1];
-  }
-
-  return null;
-}
-
-function inferStatus(text) {
-  const normalized = normalizeString(text);
-  if (!normalized) {
-    return 'advisory';
-  }
-
-  if (
-    normalized.includes('service normal') ||
-    normalized.includes('normal service') ||
-    normalized.includes('reprise du service')
-  ) {
-    return 'normal';
-  }
+function inferStatus(message) {
+  const normalized = normalizeText(message);
 
   if (
     normalized.includes('interruption') ||
@@ -117,148 +62,128 @@ function inferStatus(text) {
     normalized.includes('suspendu') ||
     normalized.includes('suspension') ||
     normalized.includes('no service') ||
-    normalized.includes('service interruption')
+    normalized.includes('service interruption') ||
+    normalized.includes('service suspended')
   ) {
     return 'major';
   }
 
   if (
-    normalized.includes('ralenti') ||
     normalized.includes('delay') ||
     normalized.includes('retard') ||
-    normalized.includes('perturb') ||
-    normalized.includes('slow') ||
-    normalized.includes('entrave')
+    normalized.includes('ralenti') ||
+    normalized.includes('slow service') ||
+    normalized.includes('service ralenti') ||
+    normalized.includes('service slowdown')
   ) {
     return 'disrupted';
   }
 
-  return 'advisory';
+  return 'disrupted';
 }
 
-function mergeStatus(current, candidate) {
+function formatUpdatedAt(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  return new Date(Number(timestamp) * 1000).toISOString();
+}
+
+function alertRouteIds(entity) {
+  const informed = entity?.alert?.informedEntity || [];
+  return informed
+    .map((item) => String(item.routeId || '').trim())
+    .filter(Boolean);
+}
+
+function mergeLineStatus(current, candidate) {
   if (!current) {
     return candidate;
   }
 
-  const next =
-    SEVERITY_RANK[candidate.status] > SEVERITY_RANK[current.status]
-      ? { ...current, ...candidate }
-      : { ...candidate, ...current };
-
+  const worse =
+    SEVERITY_RANK[candidate.status] > SEVERITY_RANK[current.status] ? candidate : current;
   const messages = new Set([...(current.messages || []), ...(candidate.messages || [])].filter(Boolean));
-  return {
-    ...next,
-    messages: [...messages].slice(0, 3),
-    message: [...messages][0] || ''
-  };
-}
-
-function extractCandidate(object) {
-  const possibleLineValue =
-    object.line ??
-    object.lineId ??
-    object.line_id ??
-    object.route ??
-    object.routeId ??
-    object.route_id ??
-    object.ligne ??
-    object.idLigne ??
-    object.codeLigne ??
-    object.noLigne ??
-    object.couleur ??
-    object.metroLine ??
-    object.nomLigne;
-
-  const lineId = normalizeLineId(possibleLineValue);
-  if (!lineId) {
-    return null;
-  }
-
-  const message = pickFirstString(object, [
-    'message',
-    'description',
-    'titre',
-    'title',
-    'texte',
-    'text',
-    'detail',
-    'details'
-  ]);
-
-  const rawStatus = pickFirstString(object, ['status', 'etat', 'state', 'severity', 'impact']);
-  const status = rawStatus ? inferStatus(rawStatus + ' ' + message) : inferStatus(message);
-  const updatedAt = pickFirstString(object, [
-    'updatedAt',
-    'updated_at',
-    'dateMaj',
-    'dateMiseAJour',
-    'timestamp',
-    'date',
-    'debut',
-    'startDate'
-  ]);
 
   return {
-    lineId,
-    status,
-    updatedAt,
-    messages: message ? [message] : [],
-    message: message || ''
+    ...worse,
+    message: worse.message || [...messages][0] || '',
+    messages: [...messages].slice(0, 5),
+    updatedAt: worse.updatedAt || current.updatedAt || candidate.updatedAt || null
   };
-}
-
-function normalizeMetroStatuses(payload) {
-  const normalized = {};
-  const candidates = flattenObjects(payload).map(extractCandidate).filter(Boolean);
-
-  candidates.forEach((candidate) => {
-    normalized[candidate.lineId] = mergeStatus(normalized[candidate.lineId], candidate);
-  });
-
-  return Object.values(LINE_INFO).map((line) => {
-    const live = normalized[line.lineId];
-    return {
-      ...line,
-      status: live?.status || 'normal',
-      message: live?.message || '',
-      messages: live?.messages || [],
-      updatedAt: live?.updatedAt || null
-    };
-  });
 }
 
 exports.handler = async function handler() {
   const clientId = process.env.STM_CLIENT_ID || '';
-  const clientSecret = process.env.STM_CLIENT_SECRET || '';
-  const apiKey = process.env.STM_CLIENT_ID
 
-  if (!apiKey || !clientSecret) {
+  if (!clientId) {
     return json(500, {
-      error: 'Missing STM_API_KEY/STM_CLIENT_ID or STM_CLIENT_SECRET environment variable.'
+      error: 'Missing STM_CLIENT_ID environment variable.'
     });
   }
 
   try {
-    const response = await fetch(STM_BASE_URL, {
+    const response = await fetch(STM_ALERTS_URL, {
       headers: {
-        Accept: 'application/json',
-        'X-IBM-Client-Id': apiKey,
-        'X-IBM-Client-Secret': clientSecret
+        'X-IBM-Client-Id': clientId
       }
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const details = await response.text();
       return json(response.status, {
         error: 'STM upstream request failed.',
         status: response.status,
-        details: errorText
+        details
       });
     }
 
-    const payload = await response.json();
-    return json(200, normalizeMetroStatuses(payload));
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buffer);
+
+    const lineStatuses = Object.fromEntries(
+      METRO_LINES.map((line) => [
+        line.routeId,
+        {
+          lineId: line.lineId,
+          lineName: line.lineName,
+          color: line.color,
+          status: 'normal',
+          message: '',
+          messages: [],
+          updatedAt: null
+        }
+      ])
+    );
+
+    for (const entity of feed.entity || []) {
+      const routeIds = alertRouteIds(entity).filter((routeId) => routeId in lineStatuses);
+      if (!routeIds.length || !entity.alert) {
+        continue;
+      }
+
+      const headerText = extractTranslation(entity.alert.headerText);
+      const descriptionText = extractTranslation(entity.alert.descriptionText);
+      const fullMessage = [headerText, descriptionText].filter(Boolean).join(' - ');
+      const status = inferStatus(fullMessage);
+      const updatedAt = formatUpdatedAt(feed.header?.timestamp);
+
+      for (const routeId of routeIds) {
+        lineStatuses[routeId] = mergeLineStatus(lineStatuses[routeId], {
+          ...lineStatuses[routeId],
+          status,
+          message: fullMessage || '',
+          messages: fullMessage ? [fullMessage] : [],
+          updatedAt
+        });
+      }
+    }
+
+    return json(
+      200,
+      METRO_LINES.map((line) => lineStatuses[line.routeId])
+    );
   } catch (error) {
     return json(500, {
       error: 'Unable to reach STM service.',

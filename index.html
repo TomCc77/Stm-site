@@ -2282,6 +2282,7 @@
     const metroCount = metroData ? metroData.stations.length : 0;
     let metroStatusByLineId = {};
     let metroStatusUpdatedAt = null;
+    let metroStatusError = null;
 
     const activeCategories = new Set(Object.keys(categories));
     const spotLayers = new Map();
@@ -3204,7 +3205,9 @@
             }).join('') +
           '</div>' +
           '<div class="metro-live-note">' +
-            (metroStatusUpdatedAt ? 'Updated ' + escapeHtml(metroStatusUpdatedAt) : 'Live status from STM when available.') +
+            (metroStatusError
+              ? escapeHtml(metroStatusError)
+              : (metroStatusUpdatedAt ? 'Updated ' + escapeHtml(metroStatusUpdatedAt) : 'Live status from STM when available.')) +
           '</div>' +
         '</div>'
       ) : '';
@@ -3214,6 +3217,7 @@
 
     async function fetchMetroStatus() {
       if (!metroData) {
+        metroStatusError = 'STM unavailable';
         setMetroLiveIndicator('down', 'STM unavailable');
         return;
       }
@@ -3224,7 +3228,20 @@
         });
 
         if (!response.ok) {
-          throw new Error('Metro status request failed');
+          let details = 'STM unavailable';
+          try {
+            const errorPayload = await response.json();
+            if (errorPayload.error === 'Missing STM_API_KEY or STM_CLIENT_ID environment variable.') {
+              details = 'STM env missing';
+            } else if (typeof errorPayload.details === 'string' && /invalid api key/i.test(errorPayload.details)) {
+              details = 'STM key invalid';
+            } else if (typeof errorPayload.error === 'string') {
+              details = errorPayload.error;
+            }
+          } catch (error) {
+            // Keep fallback label.
+          }
+          throw new Error(details);
         }
 
         const payload = await response.json();
@@ -3238,12 +3255,15 @@
           hour: 'numeric',
           minute: '2-digit'
         }).format(new Date());
+        metroStatusError = null;
         setMetroLiveIndicator('live', 'STM live');
         renderMetroOverlay();
         setMetroVisibility(metroVisible);
         renderLegend();
       } catch (error) {
-        setMetroLiveIndicator('down', 'STM unavailable');
+        metroStatusError = error instanceof Error ? error.message : 'STM unavailable';
+        setMetroLiveIndicator('down', metroStatusError);
+        renderLegend();
         // Keep the static metro overlay if the live endpoint is unavailable.
       }
     }
