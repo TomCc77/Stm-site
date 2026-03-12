@@ -231,7 +231,7 @@ function normalizeMetroStatuses(payload) {
 exports.handler = async function handler() {
   const clientId = process.env.STM_CLIENT_ID || '';
   const clientSecret = process.env.STM_CLIENT_SECRET || '';
-  const apiKey = process.env.STM_API_KEY || clientId;
+  const apiKey = process.env.STM_CLIENT_ID
 
   if (!apiKey || !clientSecret) {
     return json(500, {
